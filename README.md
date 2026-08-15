@@ -159,6 +159,7 @@ The diagram is the **research topology**, not a frozen production architecture.
 | 🔗 Ecosystem integration | ❌ Not authorized | No automatic Titan / Crystal / Native Kernel / Mentaury integration |
 
 > ⚠️ **Boundary:** preregistered ≠ empirically supported; implemented ≠ authorized; green CI ≠ architecture accepted.
+> This table is a point-in-time snapshot for orientation only. It can go stale — canonical current state always lives in [`STATUS.md`](STATUS.md) and [`project-state.json`](project-state.json).
 
 ## ⚔️ Primary null hypothesis
 

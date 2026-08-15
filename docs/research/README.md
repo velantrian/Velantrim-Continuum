@@ -30,4 +30,6 @@ Architecture Reassessment  → mandatory stop gate
 
 `docs/research/**` stores research protocols, future experiment artifacts and evidence-oriented material. It does not automatically define production architecture or authorize runtime capability.
 
+The status block above is a point-in-time snapshot, not the canonical source. It can go stale — always defer to [`project-state.json`](../../project-state.json) / [`STATUS.md`](../../STATUS.md) for current milestone/gate state.
+
 No production runtime or ecosystem integration should be added merely because candidate mechanisms have been discussed.

@@ -159,6 +159,7 @@ flowchart LR
 | 🔗 Ecosystem integration | ❌ Не authorized | Нет автоматической интеграции с Titan / Crystal / Native Kernel / Mentaury |
 
 > ⚠️ **Boundary:** preregistered ≠ empirically supported; implemented ≠ authorized; green CI ≠ architecture accepted.
+> Эта таблица — снимок состояния на момент чтения, для ориентации. Она может устареть — канонический текущий статус всегда живёт в [`STATUS.md`](STATUS.md) и [`project-state.json`](project-state.json).
 
 ## ⚔️ Primary null hypothesis
 
