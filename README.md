@@ -151,8 +151,8 @@ The diagram is the **research topology**, not a frozen production architecture.
 |---|---|---|
 | 🧠 Conceptual decomposition | ✅ Established for research scope | Capture, Transfer, Reasoning, Authority, Execution and Freshness are separated conceptually |
 | 🔬 Experiment 0 preregistration | ✅ Present | E0-C → E0-T → mandatory reassessment is documented |
-| 🤖 AI documentation router | 🟡 Proposed in current documentation PR | Deterministic read order and `never_infer` rules |
-| ⚙ Machine-readable project state | 🟡 Proposed in current documentation PR | Repository state is explicit rather than inferred from prose |
+| 🤖 AI documentation router | ✅ Present | Deterministic read order and `never_infer` rules live outside the human README |
+| ⚙ Machine-readable project state | ✅ Present | Volatile repository state is explicit rather than inferred from prose |
 | 🧪 Experiment harness | ❌ Not started | No evidence run has begun |
 | 🏛 Production architecture | ❌ Not frozen | Research results must come first |
 | 🚀 Production runtime | ❌ Not authorized | This repository is not a production agent runtime |
