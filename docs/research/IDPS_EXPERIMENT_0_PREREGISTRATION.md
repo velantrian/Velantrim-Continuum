@@ -387,8 +387,13 @@ Per-item outcomes:
 - **MISATTRIBUTED** — source, authority, entity or provenance assigned incorrectly.
 - **TEMPORALLY_WRONG** — validity, sequencing or temporal condition represented incorrectly.
 - **CONFLICT_COLLAPSED** — unresolved contradiction incorrectly reduced to one authoritative answer.
-- **STALE** — an item that should no longer be active remains active.
-- **REVIVED** — superseded/rejected state becomes active again without new evidence.
+- **STALE** — an item captured as active previously has since been superseded in the source interaction, but the capture was never updated to reflect that (a failure to detect the item's own supersession).
+- **REVIVED** — an item previously captured as inactive/superseded is later re-marked active without new supporting evidence.
+
+Disambiguation:
+
+- Classify a degraded item as `UNDER_SPECIFIED` when the missing/degraded material is specifically scope, condition, or status; use `PARTIAL` for other missing or degraded material fields. Do not double-count the same field gap under both outcomes.
+- `STALE` and `REVIVED` both require the evaluator to see the item's own prior recorded status, not only a single before/after structured-state diff. A fixture or harness that only exposes one snapshot per side cannot distinguish "never updated" (`STALE`) from "updated, then reverted" (`REVIVED`) and must not guess between them.
 
 The preregistered evaluator must map field mismatches to these outcomes without changing semantics after observing results.
 
@@ -618,6 +623,8 @@ The following transformations must be explicitly recorded:
 | inactive/superseded | active | REVIVED |
 | current | outdated interpretation | STALE |
 
+`STALE` in this table denotes the successor acting on a value that was current in the Oracle State but has since drifted relative to the world (a causal/freshness concern). This is distinct from the E0-C `STALE` outcome in §10, which denotes a captured item that failed to reflect its own supersession. The two must not be merged in aggregate reporting.
+
 No composite metric may hide these outcomes.
 
 ---
@@ -677,7 +684,8 @@ Each arm must record costs separately.
 - tool calls;
 - model calls;
 - duplicated work;
-- reorientation turns.
+- reorientation turns;
+- reconciliation between representations.
 
 No single cost number is required. Later analysis may examine a Pareto frontier across continuity quality, cost, latency and complexity.
 
