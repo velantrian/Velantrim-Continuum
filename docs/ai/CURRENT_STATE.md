@@ -10,7 +10,8 @@ This file explains the current volatile project state in plain technical languag
 - Status: Research / Pre-implementation.
 - Research foundation: merged via PR #1.
 - Foundation merge commit: `e14cf46f96724dda933ce647b46f72fc4866dc7c`.
-- Current documentation work: Human / AI / Machine documentation architecture adaptation.
+- Current documentation work: Human / AI / Machine Documentation Architecture v1.
+- Current documentation PR: #2 — OPEN.
 - Experiment 0 harness: not started.
 - Evidence runs: none.
 - Production architecture: not frozen.
@@ -19,7 +20,7 @@ This file explains the current volatile project state in plain technical languag
 
 ## Current research order
 
-1. Complete and validate the documentation architecture change.
+1. Review and close documentation PR #2.
 2. Select the next bounded engineering milestone explicitly.
 3. When authorized, build only the bounded Experiment 0 harness required by the preregistration.
 4. Run E0-C Capture Isolation first.

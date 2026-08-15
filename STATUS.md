@@ -11,7 +11,7 @@
 | Research foundation | ✅ Merged |
 | Foundation PR | ✅ #1 merged |
 | Foundation merge SHA | `e14cf46f96724dda933ce647b46f72fc4866dc7c` |
-| Documentation architecture | 🟡 Current proposed change |
+| Documentation architecture | 🟡 PR #2 OPEN |
 | Experiment 0 harness | ❌ Not started |
 | E0-C Capture Isolation | ❌ Not started |
 | E0-T Transfer Isolation | ❌ Not started |
@@ -23,7 +23,9 @@
 ## Current research sequence
 
 ```text
-Documentation architecture
+Documentation PR #2
+        ↓
+review / close
         ↓
 explicit next-milestone selection
         ↓
