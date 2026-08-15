@@ -145,18 +145,19 @@ flowchart LR
 
 The diagram is the **research topology**, not a frozen production architecture.
 
-## 📊 What exists today
+## 📊 Documentation surfaces
 
-| Area | Status | Meaning |
+The README stays intentionally stable. Volatile milestone, PR, gate and authorization values live in [`STATUS.md`](STATUS.md), [`project-state.json`](project-state.json), and [`docs/ai/CURRENT_STATE.md`](docs/ai/CURRENT_STATE.md).
+
+| Surface | Role | Update class |
 |---|---|---|
-| 🧠 Conceptual decomposition | ✅ Established for research scope | Capture, Transfer, Reasoning, Authority, Execution and Freshness are separated conceptually |
-| 🔬 Experiment 0 preregistration | ✅ Present | E0-C → E0-T → mandatory reassessment is documented |
-| 🤖 AI documentation router | ✅ Present | Deterministic read order and `never_infer` rules live outside the human README |
-| ⚙ Machine-readable project state | ✅ Present | Volatile repository state is explicit rather than inferred from prose |
-| 🧪 Experiment harness | ❌ Not started | No evidence run has begun |
-| 🏛 Production architecture | ❌ Not frozen | Research results must come first |
-| 🚀 Production runtime | ❌ Not authorized | This repository is not a production agent runtime |
-| 🔗 Ecosystem integration | ❌ Not authorized | No automatic Titan / Crystal / Native Kernel / Mentaury integration |
+| 👤 `README.md` / `README.ru.md` | Human landing page and stable mental model | Structural changes only |
+| 📚 `RESEARCH_OVERVIEW*.md` | Deep human conceptual explanation | Structural research changes |
+| 🤖 `docs/ai/README.md` | Deterministic AI router and canonical `never infer` rules | AI/documentation contract changes |
+| 🤖 `AGENTS.md` | Repository scope and working contract | Scope / behavior contract changes |
+| ⚙ `project-state.json` | Exact volatile machine-readable state | State changes |
+| 📊 `STATUS.md` | Compact human current-state surface | State changes |
+| 🔬 `docs/research/**` | Formal protocols and evidence-oriented research artifacts | Protocol / evidence changes |
 
 > ⚠️ **Boundary:** preregistered ≠ empirically supported; implemented ≠ authorized; green CI ≠ architecture accepted.
 
@@ -166,7 +167,7 @@ The diagram is the **research topology**, not a frozen production architecture.
 
 A result where careful capture plus `state.json` performs as well as a richer mechanism is a **successful result**, because it removes unnecessary complexity, latency, infrastructure, and failure surface.
 
-## 🔬 Current research boundary
+## 🔬 Research boundary
 
 The canonical sequence is:
 
@@ -184,7 +185,7 @@ Transfer analysis
 Architecture Reassessment
 ```
 
-Not frozen yet:
+Not frozen by the current research foundation:
 
 - event sourcing / ledger as required architecture;
 - T1/T2/T3 as final ontology;
