@@ -8,11 +8,21 @@ Human-facing name: **🌎 Velantrim Continuum 🪎**
 
 Status: **Research / Pre-implementation**.
 
+## Mandatory AI start point
+
+Before doing repository work, read in this order:
+
+1. `docs/ai/README.md`
+2. `AGENTS.md`
+3. `project-state.json`
+4. `docs/ai/CURRENT_STATE.md`
+5. the task-specific formal protocol / evidence
+
+Do not use the human-facing README as the sole source of current project truth.
+
 ## Current objective
 
-The current objective is not to implement a production runtime.
-
-The current objective is to execute a falsification-first Experiment 0:
+The current research sequence is:
 
 1. **E0-C — Capture Isolation**
 2. **E0-T — Transfer Isolation**
@@ -22,11 +32,13 @@ The canonical protocol is:
 
 `docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`
 
+The current documentation work does not authorize Experiment 0 execution automatically. The next engineering milestone must still be selected explicitly after the documentation change closes.
+
 ## Core research rule
 
 > Do not preserve the model. Preserve only what the process demonstrably needs to continue.
 
-And operationally:
+Operationally:
 
 > Measure Capture → Measure Transfer → Find minimum sufficient state → Reassess architecture.
 
@@ -46,7 +58,7 @@ Do **not** automatically import or implement architecture from:
 - Mentaury / Mentaury Soul;
 - other Velantrim experimental projects.
 
-Those systems may become references in later research only after Experiment 0 and Architecture Reassessment justify mapping or integration.
+Those systems may become references later only after Experiment 0 and Architecture Reassessment justify mapping or integration.
 
 ## Not frozen
 
@@ -71,7 +83,7 @@ These are candidate mechanisms or future research questions.
 
 ## Experimental discipline
 
-When working on Experiment 0:
+When Experiment 0 work is explicitly authorized:
 
 - keep Capture and Transfer experimentally isolated;
 - use human-authored Gold / Oracle State;
@@ -84,15 +96,65 @@ When working on Experiment 0:
 - version any protocol change that occurs after runs begin;
 - invalidate and rerun affected comparisons if a preregistered protocol changes materially.
 
+## Documentation architecture
+
+The repository separates one project truth into different representations:
+
+- **Human:** `README.md`, `README.ru.md`, `RESEARCH_OVERVIEW*.md`;
+- **AI:** `docs/ai/README.md`, this file, `docs/ai/CURRENT_STATE.md`;
+- **Machine:** `project-state.json`;
+- **Formal research:** `docs/research/**`;
+- **Status:** `STATUS.md`;
+- **Evidence/history:** future committed evidence, results, ADRs or checkpoints when they actually exist.
+
+Presentation never creates authority.
+
+## Documentation change classification
+
+Before changing documentation, classify the change:
+
+### `STRUCTURAL_CHANGE`
+
+Changes conceptual meaning, formal experiment semantics, authority boundaries, or the documentation architecture itself.
+
+Reconcile affected formal, AI, machine and human surfaces.
+
+### `STATE_CHANGE`
+
+Changes current milestone, gate, blocker or authorization without changing conceptual meaning.
+
+Update volatile state surfaces first: `project-state.json`, `docs/ai/CURRENT_STATE.md`, `STATUS.md`.
+
+### `EVIDENCE_ONLY`
+
+Adds evidence without changing semantic state.
+
+Do not manufacture a project-state transition merely because new evidence exists.
+
+## Never infer
+
+Never infer that:
+
+- preregistered means empirically supported;
+- implemented means authorized;
+- tested means production-ready;
+- green CI means architecture accepted;
+- event sourcing is required by IDPS;
+- T1/T2/T3 is final ontology;
+- a historical SHA is current `main`;
+- a bot review equals independent reproduction;
+- README prose overrides formal protocol;
+- Experiment 0 completion automatically permits production runtime work.
+
 ## Current allowed work
 
 Allowed before Experiment 0 evidence:
 
 - research documentation;
 - preregistration refinement before evidence lock;
-- deterministic schemas/evaluators needed by the preregistered protocol;
-- fixtures and human-authored Gold;
-- bounded experiment harness;
+- deterministic schemas/evaluators needed by an explicitly selected bounded milestone;
+- fixtures and human-authored Gold when that milestone is authorized;
+- bounded experiment harness when explicitly authorized;
 - reproducibility and cost instrumentation;
 - tests for the experiment harness.
 
@@ -110,4 +172,4 @@ Notion page:
 
 https://app.notion.com/p/3bcac84d054781ebb7b3cbd281bdcdc6
 
-If repository evidence and an older narrative conflict, prefer current committed evidence and explicitly reconcile the documentation rather than silently rewriting history.
+If repository evidence and an older narrative conflict, prefer current task-authoritative committed evidence and explicitly reconcile documentation rather than silently rewriting history.
