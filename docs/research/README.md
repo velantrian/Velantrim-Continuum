@@ -1,8 +1,8 @@
 # 🔬 Research Index
 
-Velantrim Continuum is currently a research-first repository. Research artifacts are intentionally separated from human landing pages, AI routing, volatile status and machine-readable project state.
+Velantrim Continuum is a research-first repository. Research artifacts are intentionally separated from human landing pages, AI routing, volatile status and machine-readable project state.
 
-## Current canonical artifact
+## Canonical Experiment 0 protocol
 
 - [`IDPS_EXPERIMENT_0_PREREGISTRATION.md`](IDPS_EXPERIMENT_0_PREREGISTRATION.md) — canonical Experiment 0 protocol: E0-C Capture Isolation first, E0-T Transfer Isolation second, followed by mandatory Architecture Reassessment.
 
@@ -13,21 +13,24 @@ Velantrim Continuum is currently a research-first repository. Research artifacts
 - Machine current state: [`../../project-state.json`](../../project-state.json)
 - Human current status: [`../../STATUS.md`](../../STATUS.md)
 
-## Current status
+## Research program order
 
 ```text
-Conceptual decomposition   ✅ complete enough to test
-Research foundation        ✅ merged
-Documentation architecture 🟡 current proposed change
-Production architecture    ⛔ not frozen
-Experiment 0 harness       ❌ not started
-E0-C Capture Isolation     → future first evidence stage
-E0-T Transfer Isolation    → future second evidence stage
-Architecture Reassessment  → mandatory stop gate
+E0-C Capture Isolation
+        ↓
+Capture analysis
+        ↓
+E0-T Transfer Isolation
+        ↓
+Transfer analysis
+        ↓
+🛑 Architecture Reassessment
 ```
+
+This is the stable protocol order, not a statement that any stage is currently running. For current milestone, PR, gate or authorization state, use [`../../project-state.json`](../../project-state.json) and [`../../STATUS.md`](../../STATUS.md).
 
 ## Boundary
 
-`docs/research/**` stores research protocols, future experiment artifacts and evidence-oriented material. It does not automatically define production architecture or authorize runtime capability.
+`docs/research/**` stores research protocols, experiment artifacts and evidence-oriented material. It does not automatically define production architecture or authorize runtime capability.
 
 No production runtime or ecosystem integration should be added merely because candidate mechanisms have been discussed.
