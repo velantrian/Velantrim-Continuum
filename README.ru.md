@@ -145,18 +145,19 @@ flowchart LR
 
 Диаграмма показывает **топологию исследования**, а не frozen production architecture.
 
-## 📊 Что существует сегодня
+## 📊 Документационные поверхности
 
-| Область | Статус | Значение |
+README намеренно остаётся стабильным. Volatile значения milestone, PR, gate и authorization находятся в [`STATUS.md`](STATUS.md), [`project-state.json`](project-state.json) и [`docs/ai/CURRENT_STATE.md`](docs/ai/CURRENT_STATE.md).
+
+| Поверхность | Роль | Класс обновления |
 |---|---|---|
-| 🧠 Conceptual decomposition | ✅ Established for research scope | Capture, Transfer, Reasoning, Authority, Execution и Freshness концептуально разделены |
-| 🔬 Experiment 0 preregistration | ✅ Есть | E0-C → E0-T → mandatory reassessment зафиксированы |
-| 🤖 AI documentation router | ✅ Есть | Детерминированный read order и `never_infer` rules вынесены из human README |
-| ⚙ Machine-readable project state | ✅ Есть | Volatile repository state задаётся явно, а не выводится из prose |
-| 🧪 Experiment harness | ❌ Не начат | Evidence run ещё не запускался |
-| 🏛 Production architecture | ❌ Не frozen | Сначала нужны данные |
-| 🚀 Production runtime | ❌ Не authorized | Это не production agent runtime |
-| 🔗 Ecosystem integration | ❌ Не authorized | Нет автоматической интеграции с Titan / Crystal / Native Kernel / Mentaury |
+| 👤 `README.md` / `README.ru.md` | Human landing page и стабильная mental model | Только structural changes |
+| 📚 `RESEARCH_OVERVIEW*.md` | Подробное human conceptual explanation | Structural research changes |
+| 🤖 `docs/ai/README.md` | Детерминированный AI router и канонические `never infer` rules | AI/documentation contract changes |
+| 🤖 `AGENTS.md` | Repository scope и working contract | Scope / behavior contract changes |
+| ⚙ `project-state.json` | Exact volatile machine-readable state | State changes |
+| 📊 `STATUS.md` | Компактная human current-state surface | State changes |
+| 🔬 `docs/research/**` | Formal protocols и evidence-oriented research artifacts | Protocol / evidence changes |
 
 > ⚠️ **Boundary:** preregistered ≠ empirically supported; implemented ≠ authorized; green CI ≠ architecture accepted.
 
@@ -166,7 +167,7 @@ flowchart LR
 
 Если careful capture + `state.json` работает не хуже более богатого механизма, это **успешный результат**, потому что он убирает лишнюю сложность, latency, infrastructure и failure surface.
 
-## 🔬 Текущая исследовательская граница
+## 🔬 Исследовательская граница
 
 ```text
 E0-C Capture Isolation
@@ -182,10 +183,10 @@ Transfer analysis
 Architecture Reassessment
 ```
 
-Пока не frozen:
+Текущий research foundation не замораживает:
 
-- event sourcing / ledger как обязательная архитектура;
-- T1/T2/T3 как финальная ontology;
+- event sourcing / ledger как обязательную архитектуру;
+- T1/T2/T3 как финальную ontology;
 - storage backend или database;
 - authority runtime;
 - model count / vendor;
