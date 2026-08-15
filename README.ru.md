@@ -151,8 +151,8 @@ flowchart LR
 |---|---|---|
 | 🧠 Conceptual decomposition | ✅ Established for research scope | Capture, Transfer, Reasoning, Authority, Execution и Freshness концептуально разделены |
 | 🔬 Experiment 0 preregistration | ✅ Есть | E0-C → E0-T → mandatory reassessment зафиксированы |
-| 🤖 AI documentation router | 🟡 Предлагается текущим documentation PR | Детерминированный read order и `never_infer` rules |
-| ⚙ Machine-readable project state | 🟡 Предлагается текущим documentation PR | Текущее состояние явно, а не выводится из prose |
+| 🤖 AI documentation router | ✅ Есть | Детерминированный read order и `never_infer` rules вынесены из human README |
+| ⚙ Machine-readable project state | ✅ Есть | Volatile repository state задаётся явно, а не выводится из prose |
 | 🧪 Experiment harness | ❌ Не начат | Evidence run ещё не запускался |
 | 🏛 Production architecture | ❌ Не frozen | Сначала нужны данные |
 | 🚀 Production runtime | ❌ Не authorized | Это не production agent runtime |
