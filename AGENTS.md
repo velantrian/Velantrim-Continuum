@@ -131,20 +131,11 @@ Adds evidence without changing semantic state.
 
 Do not manufacture a project-state transition merely because new evidence exists.
 
-## Never infer
+## Canonical `never infer` rules
 
-Never infer that:
+The canonical and complete `never infer` list is maintained in [`docs/ai/README.md`](docs/ai/README.md#never-infer).
 
-- preregistered means empirically supported;
-- implemented means authorized;
-- tested means production-ready;
-- green CI means architecture accepted;
-- event sourcing is required by IDPS;
-- T1/T2/T3 is final ontology;
-- a historical SHA is current `main`;
-- a bot review equals independent reproduction;
-- README prose overrides formal protocol;
-- Experiment 0 completion automatically permits production runtime work.
+Treat that list as part of this repository contract. Do not duplicate a second independently maintained copy here; if the rule set changes, update the AI router and any affected machine/formal surfaces consistently.
 
 ## Current allowed work
 
