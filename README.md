@@ -1,19 +1,26 @@
 # 🌎 Velantrim Continuum 🪎
 
 > **IDPS Research — Inference-Decoupled Process Substrate**  
-> Research / Pre-implementation
+> **Status:** Research / Pre-implementation
 
-Velantrim Continuum is a standalone research line investigating how a long-lived AI process can continue functioning when any particular LLM inference instance, context window, model family, or runtime session disappears or is replaced.
+[English](README.md) · [Русский](README.ru.md)
 
-The central idea is deliberately simple:
+Velantrim Continuum investigates a simple question with deliberately strict experimental discipline:
 
-> **Do not preserve the model. Preserve only what the process demonstrably needs to continue.**
+> **What must remain outside a replaceable LLM inference instance for a long-lived AI process to continue functionally?**
 
-This repository does **not** assume that a complex runtime is necessary. The primary null hypothesis is that a much simpler approach — potentially careful capture plus a canonical `state.json` — may already be sufficient.
+The project does **not** assume that a complex runtime is necessary. A careful capture mechanism plus a small canonical `state.json` may be enough — and that outcome would count as research success.
+
+**🤖 AI / Agents / Automated Auditors:** start at [`docs/ai/README.md`](docs/ai/README.md), not by reconstructing current truth from this human-facing README.  
+**📚 Deep human overview:** [`RESEARCH_OVERVIEW.md`](RESEARCH_OVERVIEW.md)  
+**⚙ Machine-readable current state:** [`project-state.json`](project-state.json)  
+**📊 Current status:** [`STATUS.md`](STATUS.md)
 
 ---
 
-## 🧬 Core model
+## 👋 What this project is
+
+A model may exhaust its context, crash, restart, or be replaced by another model. Continuum asks whether the **process** can remain coherent across that replacement without pretending that hidden model cognition can be preserved exactly.
 
 ```text
 🤖 inference/context disappears
@@ -22,34 +29,70 @@ This repository does **not** assume that a complex runtime is necessary. The pri
             ↓
 🤖 new inference instance attaches
             ↓
-▶ functional process continuation
+▶ functional continuation
 ```
 
-The target is **functional continuity**, not literal reconstruction of hidden model cognition.
+The target is **functional continuity**, not literal continuity of hidden internal cognition.
 
-A replaceable inference instance may change, crash, reset, exhaust its context, or be swapped for another model while the long-lived process preserves only the externally represented state proven necessary for continuation.
+## 💡 Why this matters
 
-## 🎯 Research question
+A long-lived AI process may need to preserve more than conversation text:
 
-What properties of a long-lived AI process must exist outside replaceable inference so that the process can continue correctly across context exhaustion, reset, crash, restart, or model replacement?
+- goals and current task position;
+- constraints and approvals;
+- accepted and rejected decisions;
+- unresolved questions and contested claims;
+- operation state such as `COMMITTED`, `FAILED`, or `UNKNOWN`;
+- provenance and epistemic status.
 
-The program explicitly separates continuity failures into different mechanisms:
+But Continuum deliberately refuses to assume that all of this requires a large substrate. The research goal is to find the **minimum sufficient process state**.
+
+## 🗺 Mental map
+
+```text
+🌎 Velantrim Continuum
+│
+├── 🎯 Capture
+│   ├── semantic interaction
+│   ├── structural events
+│   └── ambiguity / uncertainty
+│
+├── 📚 Process State
+│   ├── goals & constraints
+│   ├── decisions & blockers
+│   ├── epistemic status
+│   └── execution state
+│
+├── 📦 Transfer / Reconstruction
+│   ├── summary
+│   ├── current state
+│   └── reconstructive context
+│
+├── 🤖 Replaceable Inference
+│
+└── 🔬 Evidence
+    └── Architecture Reassessment
+```
+
+## ⚙ Failure flow
+
+Different continuity failures must not be mixed into one score:
 
 ```text
 Input / Environment
         │
         ▼
 🎯 CAPTURE
-        │
+        │   Capture Failure
         ▼
 📚 PROCESS STATE
         │
         ▼
 📦 TRANSFER / RECONSTRUCTION
-        │
+        │   Transfer Failure
         ▼
 🤖 INFERENCE
-        │
+        │   Reasoning / obedience failure
         ▼
 🔐 AUTHORITY / POLICY
         │
@@ -59,123 +102,137 @@ Input / Environment
         ▼
 🌍 WORLD
 
-Parallel risk: ⏱ causal / freshness failure
+Parallel future risk: ⏱ causal / freshness failure
 ```
 
-This decomposition matters because a handoff can appear to fail for very different reasons: the state may never have been captured, it may have been lost during transfer, the successor may reason incorrectly, an authorization boundary may fail, or the successor may simply be stale.
+## 🌳 Research decomposition
 
-## 🧠 Continuity dimensions
+```text
+🧬 IDPS Research
+│
+├── 🎯 E0-C — Capture Isolation
+│   ├── C0 Raw Context
+│   ├── C1 LLM Extraction
+│   ├── C2 Capture Assurance
+│   └── C3 Human-authored Oracle State
+│
+├── 📦 E0-T — Transfer Isolation
+│   ├── T0 Structured Summary
+│   ├── T1 Canonical Current State
+│   ├── T2 Event Log → Projection
+│   ├── T3 Projection + Manifest
+│   └── T4 Full Context Reference
+│
+└── 🛑 Architecture Reassessment
+    ├── simplify?
+    ├── redirect research?
+    └── justify additional structure?
+```
 
-Continuity is currently studied across three working dimensions:
+## 🔄 Experimental topology
 
-- **Cognitive continuity** — goals, task position, decisions, blockers, unresolved questions, epistemic state and relevant rationale.
-- **Transactional continuity** — intent, dispatch, commit/failure/unknown state of external operations and protection against unsafe retries.
-- **Causal continuity** — whether the inference instance acts against sufficiently current process state.
+```mermaid
+flowchart LR
+    I["👤 Natural interaction"] --> C["🎯 E0-C Capture Isolation"]
+    C --> S["📚 Structured Process State"]
+    S --> T["📦 E0-T Transfer Isolation"]
+    T --> E["🔬 Evidence"]
+    E --> R["🛑 Architecture Reassessment"]
+    R --> D1["Simplify"]
+    R --> D2["Redirect R&D"]
+    R --> D3["Continue IDPS research"]
+```
 
-These are research dimensions, not a claim that the final architecture must expose exactly these abstractions.
+The diagram is the **research topology**, not a frozen production architecture.
 
-## 🔬 Experiment 0
+## 📊 Documentation surfaces
 
-The next stage is intentionally experimental rather than architectural.
+The README stays intentionally stable. Volatile milestone, PR, gate and authorization values live in [`STATUS.md`](STATUS.md), [`project-state.json`](project-state.json), and [`docs/ai/CURRENT_STATE.md`](docs/ai/CURRENT_STATE.md).
 
-### E0-C — Capture Isolation
+| Surface | Role | Update class |
+|---|---|---|
+| 👤 `README.md` / `README.ru.md` | Human landing page and stable mental model | Structural changes only |
+| 📚 `RESEARCH_OVERVIEW*.md` | Deep human conceptual explanation | Structural research changes |
+| 🤖 `docs/ai/README.md` | Deterministic AI router and canonical `never infer` rules | AI/documentation contract changes |
+| 🤖 `AGENTS.md` | Repository scope and working contract | Scope / behavior contract changes |
+| ⚙ `project-state.json` | Exact volatile machine-readable state | State changes |
+| 📊 `STATUS.md` | Compact human current-state surface | State changes |
+| 🔬 `docs/research/**` | Formal protocols and evidence-oriented research artifacts | Protocol / evidence changes |
 
-Question:
-
-> What can the system correctly transform from natural interaction into structured process state before any handoff occurs?
-
-Candidate conditions:
-
-- `C0` — Raw Context
-- `C1` — LLM Extraction
-- `C2` — Capture Assurance
-- `C3` — Human-authored Oracle State
-
-Initial fixture families include explicit restrictions, conditional restrictions, revisions, rejected alternatives, ambiguous cautions, fabrication bait, temporal rules and unresolved contradictions.
-
-### E0-T — Transfer Isolation
-
-Question:
-
-> If correct process state already exists, what representation is sufficient for a successor to continue functionally?
-
-Candidate arms:
-
-- `T0` — Structured Summary
-- `T1` — Canonical Current State (`state.json`)
-- `T2` — Event Log → Deterministic Projection
-- `T3` — Projection + Reconstructive Manifest
-- `T4` — Full Context Reference, where technically possible
-
-All transfer arms must start from the **same human-authored Oracle State** so capture quality cannot confound transfer results.
+> ⚠️ **Boundary:** preregistered ≠ empirically supported; implemented ≠ authorized; green CI ≠ architecture accepted.
 
 ## ⚔️ Primary null hypothesis
 
 > **A simple externally maintained current-state representation may be sufficient.**
 
-A result where `state.json` performs as well as a more complex mechanism is a **successful research outcome**. The project is falsification-first: complexity has to earn its place.
+A result where careful capture plus `state.json` performs as well as a richer mechanism is a **successful result**, because it removes unnecessary complexity, latency, infrastructure, and failure surface.
 
-## 🛑 Mandatory reassessment gate
+## 🔬 Research boundary
+
+The canonical sequence is:
 
 ```text
-E0-C
-  ↓
+E0-C Capture Isolation
+        ↓
 Capture analysis
-  ↓
-E0-T
-  ↓
+        ↓
+E0-T Transfer Isolation
+        ↓
 Transfer analysis
-  ↓
+        ↓
 🛑 STOP
-  ↓
-🧠 Architecture Reassessment
+        ↓
+Architecture Reassessment
 ```
 
-Only after this gate should the project decide whether to:
+Not frozen by the current research foundation:
 
-- simplify to a small current-state representation;
-- redirect toward Capture Assurance research;
-- add reconstructive narrative;
-- investigate durability/recovery mechanisms;
-- justify event sourcing;
-- or continue toward a fuller IDPS substrate.
-
-## 🚫 Deliberately not frozen
-
-The repository does **not** currently freeze:
-
-- storage backend;
-- event alphabet;
-- database technology;
-- authority schema;
-- exact state tier ontology;
-- model vendor or family;
-- number of models;
-- role-to-model mapping;
-- context-pressure thresholds;
-- embedding strategy;
+- event sourcing / ledger as required architecture;
+- T1/T2/T3 as final ontology;
+- storage backend or database;
+- authority runtime;
+- model count or vendor;
+- embeddings strategy;
 - production FSM;
-- long-horizon benchmark;
-- integration destination inside the broader Velantrim ecosystem.
+- ecosystem integration destination.
 
-## 🧭 Ecosystem boundary
+## 🧭 Reading paths
 
-Velantrim Continuum is currently standalone research. It must not be automatically integrated into Titan, Crystal, Native Kernel, Mentaury, or other Velantrim projects before Experiment 0 and the subsequent Architecture Reassessment establish what is actually justified.
+### 👤 Human
 
-Related systems may be used as references later, but this repository is intentionally isolated so experimental failures can be attributed to Continuum hypotheses rather than to the complexity of another runtime.
+```text
+README.md
+   ↓
+RESEARCH_OVERVIEW.md
+   ↓
+docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md
+   ↓
+future evidence / results
+```
 
-## 📄 Canonical next artifact
+### 🤖 AI / agent
 
-The immediate research artifact is:
+```text
+docs/ai/README.md
+   ↓
+AGENTS.md
+   ↓
+project-state.json
+   ↓
+docs/ai/CURRENT_STATE.md
+   ↓
+task-specific protocol / evidence
+```
 
-[`docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`](docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md)
+### 📊 Current status only
 
-It locks the Experiment 0 protocol before evidence runs begin.
+`STATUS.md` + `project-state.json`
 
-## 🔗 Research record
+## 📚 Research record
 
-Canonical Notion research page: **🌎 Velantrim Continuum — IDPS Research 🪎**  
-https://app.notion.com/p/3bcac84d054781ebb7b3cbd281bdcdc6
+- Canonical preregistration: [`docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`](docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md)
+- Research index: [`docs/research/README.md`](docs/research/README.md)
+- Canonical Notion page: **🌎 Velantrim Continuum — IDPS Research 🪎**
 
 ---
 
