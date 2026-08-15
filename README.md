@@ -3,7 +3,7 @@
 > **IDPS Research — Inference-Decoupled Process Substrate**  
 > **Status:** Research / Pre-implementation
 
-[English](README.md) · [Русский](README.ru.md)
+[🇬🇧 English](README.md) · [🇷🇺 Русский](README.ru.md)
 
 Velantrim Continuum investigates a simple question with deliberately strict experimental discipline:
 
@@ -239,3 +239,7 @@ task-specific protocol / evidence
 ### 🧬 One-line formulation
 
 **Measure Capture → Measure Transfer → Find minimum sufficient state → Reassess architecture.**
+
+---
+
+[🇬🇧 English](README.md) · [🇷🇺 Русский](README.ru.md)
