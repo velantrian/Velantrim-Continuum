@@ -32,7 +32,7 @@ The canonical protocol is:
 
 `docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`
 
-The current documentation work does not authorize Experiment 0 execution automatically. The next engineering milestone must still be selected explicitly after the documentation change closes.
+Documentation Architecture v1 is complete via PR #2. That merge did **not** select the next engineering milestone and did not authorize Experiment 0 execution. The next bounded engineering milestone must still be selected explicitly.
 
 ## Core research rule
 
@@ -96,18 +96,30 @@ When Experiment 0 work is explicitly authorized:
 - version any protocol change that occurs after runs begin;
 - invalidate and rerun affected comparisons if a preregistered protocol changes materially.
 
+## Authority model
+
+Authority is fact-class specific:
+
+- **GitHub:** observable repository lifecycle facts such as PR state, merge SHA, commit ancestry and branch HEAD.
+- **Machine semantic state:** `project-state.json` for selected milestone/state and authorization flags.
+- **Formal research:** `docs/research/**` for experiment semantics and preregistered rules.
+- **Derived status:** `STATUS.md` and `docs/ai/CURRENT_STATE.md`.
+- **External research record:** canonical Notion page.
+
+`project-state.json` does not override live GitHub facts, and GitHub lifecycle does not select semantic milestones or authorizations.
+
+Presentation never creates authority.
+
 ## Documentation architecture
 
 The repository separates one project truth into different representations:
 
 - **Human:** `README.md`, `README.ru.md`, `RESEARCH_OVERVIEW*.md`;
 - **AI:** `docs/ai/README.md`, this file, `docs/ai/CURRENT_STATE.md`;
-- **Machine:** `project-state.json`;
+- **Machine semantic state:** `project-state.json`;
 - **Formal research:** `docs/research/**`;
 - **Status:** `STATUS.md`;
 - **Evidence/history:** future committed evidence, results, ADRs or checkpoints when they actually exist.
-
-Presentation never creates authority.
 
 ## Documentation change classification
 
@@ -119,17 +131,37 @@ Changes conceptual meaning, formal experiment semantics, authority boundaries, o
 
 Reconcile affected formal, AI, machine and human surfaces.
 
+When a structural change affects a bilingual human surface, update the paired EN/RU surface in the same PR unless parity is explicitly and reviewably deferred.
+
 ### `STATE_CHANGE`
 
 Changes current milestone, gate, blocker or authorization without changing conceptual meaning.
 
-Update volatile state surfaces first: `project-state.json`, `docs/ai/CURRENT_STATE.md`, `STATUS.md`.
+Update the always-derived volatile state bundle together:
+
+- `project-state.json`;
+- `docs/ai/CURRENT_STATE.md`;
+- `STATUS.md`.
+
+Update `docs/ai/README.md` or other structural surfaces only when their wording is affected by the state transition.
 
 ### `EVIDENCE_ONLY`
 
 Adds evidence without changing semantic state.
 
 Do not manufacture a project-state transition merely because new evidence exists.
+
+## State-control-plane invariant
+
+Repository validation may independently check:
+
+1. live GitHub lifecycle against committed lifecycle expectations;
+2. provenance lineage — a reviewed base may be identical to or an ancestor of current `main`;
+3. state-bundle integrity for primary and always-derived volatile state files.
+
+A later README-only, translation-only or engineering-only commit is not a state failure merely because `main` advances.
+
+Automation may detect inconsistency. It may not choose a milestone, start Experiment 0, authorize production runtime, or change an experimental conclusion.
 
 ## Canonical `never infer` rules
 
@@ -163,4 +195,4 @@ Notion page:
 
 https://app.notion.com/p/3bcac84d054781ebb7b3cbd281bdcdc6
 
-If repository evidence and an older narrative conflict, prefer current task-authoritative committed evidence and explicitly reconcile documentation rather than silently rewriting history.
+If repository evidence and an older narrative conflict, prefer the fact owner appropriate to the claim, report the conflict, and reconcile documentation explicitly rather than silently rewriting history.
