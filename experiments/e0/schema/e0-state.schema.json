@@ -6,10 +6,7 @@
   "required": ["schema_version", "items"],
   "properties": {
     "schema_version": {"const": "0.1"},
-    "items": {
-      "type": "array",
-      "items": {"$ref": "#/$defs/state_item"}
-    }
+    "items": {"type": "array", "items": {"$ref": "#/$defs/state_item"}}
   },
   "additionalProperties": false,
   "$defs": {
@@ -21,6 +18,7 @@
         "item_id": {"type": "string", "minLength": 1},
         "entity": {"type": "string", "minLength": 1},
         "kind": {"type": "string", "minLength": 1},
+        "value": {"$ref": "#/$defs/nullable_string"},
         "scope": {"$ref": "#/$defs/nullable_string"},
         "condition": {"$ref": "#/$defs/nullable_string"},
         "origin": {"$ref": "#/$defs/nullable_string"},

@@ -19,9 +19,13 @@ def find_fixture(fixture_set: dict, fixture_id: str) -> dict:
     raise ValueError(f"fixture not found: {fixture_id}")
 
 
-def gold_for_fixture(reference: dict, fixture: dict) -> list[dict]:
+def gold_for_fixture(reference: dict, fixture: dict, clarification_stage: str) -> list[dict]:
     require_human_reference(reference)
     family = fixture["family"]
+    if clarification_stage == "post":
+        post = reference.get("post_clarification_items_by_family", {}).get(family)
+        if post is not None:
+            return post
     items = reference.get("items_by_family", {}).get(family)
     if items is None:
         raise ValueError(f"approved Gold has no family entry: {family}")
@@ -34,6 +38,7 @@ def main() -> int:
     parser.add_argument("--fixture-id", required=True)
     parser.add_argument("--gold", required=True)
     parser.add_argument("--captured-state", required=True)
+    parser.add_argument("--clarification-stage", choices=["pre", "post"], default="pre")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -41,8 +46,10 @@ def main() -> int:
     fixture = find_fixture(fixture_set, args.fixture_id)
     gold = load(args.gold)
     captured = load(args.captured_state)
-    result = evaluate_capture(gold_for_fixture(gold, fixture), captured, fixture.get("hard_fail_bindings", []))
+    reference_items = gold_for_fixture(gold, fixture, args.clarification_stage)
+    result = evaluate_capture(reference_items, captured, fixture.get("hard_fail_bindings", []))
     result["fixture_id"] = args.fixture_id
+    result["clarification_stage"] = args.clarification_stage
     Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 0
 
