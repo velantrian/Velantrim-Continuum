@@ -1,0 +1,25 @@
+name: Experiment 0 harness
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  e0-harness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile Experiment 0 scripts
+        run: python -m compileall -q scripts/e0
+      - name: Validate Experiment 0 contracts
+        run: python scripts/e0/validate_contracts.py
+      - name: Run Experiment 0 unit tests
+        run: python -m unittest discover -s tests/e0 -v
