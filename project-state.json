@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "project": "Velantrim Continuum",
   "technical_name": "IDPS",
   "technical_expansion": "Inference-Decoupled Process Substrate",
@@ -7,9 +7,18 @@
   "research_foundation": "MERGED",
   "foundation_pr": 1,
   "foundation_merge_sha": "e14cf46f96724dda933ce647b46f72fc4866dc7c",
-  "current_workstream": "DOCUMENTATION_ARCHITECTURE_V1",
-  "current_workstream_status": "OPEN_PR",
-  "current_workstream_pr": 2,
+  "current_workstream": "NEXT_BOUNDED_ENGINEERING_MILESTONE_SELECTION",
+  "current_workstream_status": "PENDING_EXPLICIT_SELECTION",
+  "current_workstream_pr": null,
+  "completed_workstreams": [
+    {
+      "name": "DOCUMENTATION_ARCHITECTURE_V1",
+      "pull_request": 2,
+      "status": "MERGED",
+      "merged_at": "2026-08-15T09:06:37Z",
+      "merge_commit_sha": "533cc6abcf59d20f7a273098f043784c95421711"
+    }
+  ],
   "next_engineering_milestone": null,
   "experiment_0_harness_started": false,
   "e0c_started": false,
@@ -32,5 +41,26 @@
     "ARCHITECTURE_REASSESSMENT"
   ],
   "primary_null_hypothesis": "A simple externally maintained current-state representation may be sufficient.",
+  "state_provenance": {
+    "verified_base_head_sha": "6509f0d56cd0b9402a552fa1115cb2eb8431b3a1",
+    "reconciled_at": "2026-08-16T06:58:16Z",
+    "reconciliation_kind": "STATE_CHANGE"
+  },
+  "state_sync": {
+    "authority": "GITHUB_FACTS_PLUS_REPOSITORY_SEMANTIC_STATE",
+    "github": {
+      "repository": "velantrian/Velantrim-Continuum",
+      "branch": "main",
+      "tracked_pull_request": {
+        "number": 2,
+        "expected_state": "MERGED",
+        "expected_merge_commit_sha": "533cc6abcf59d20f7a273098f043784c95421711"
+      }
+    },
+    "derived_state_surfaces": [
+      "STATUS.md",
+      "docs/ai/CURRENT_STATE.md"
+    ]
+  },
   "external_research_record": "https://app.notion.com/p/3bcac84d054781ebb7b3cbd281bdcdc6"
 }
