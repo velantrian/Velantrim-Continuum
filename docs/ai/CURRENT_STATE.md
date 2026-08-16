@@ -2,67 +2,60 @@
 
 `document_role: volatile_ai_state_explanation`
 
-This file explains the current volatile project state in plain technical language. Selected semantic machine-readable values live in [`project-state.json`](../../project-state.json). Observable GitHub lifecycle facts must be verified against GitHub rather than inferred from this derived explanation.
+Selected semantic machine-readable values live in [`project-state.json`](../../project-state.json). Observable GitHub lifecycle facts must be verified live.
 
 ## Current checkpoint
 
 - Project: Velantrim Continuum / IDPS Research.
 - Status: Research / Pre-implementation.
-- Research foundation: merged via PR #1.
-- Foundation merge commit: `e14cf46f96724dda933ce647b46f72fc4866dc7c`.
-- Human / AI / Machine Documentation Architecture v1: completed via PR #2.
-- Documentation PR #2: **MERGED**.
-- PR #2 merge commit: `533cc6abcf59d20f7a273098f043784c95421711`.
-- Next bounded engineering milestone: **`EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS` selected**.
-- Current workstream: **active**, bounded to preregistration hardening, experiment contracts, deterministic evaluation, minimal harness, non-evidence pilot validation and evidence lock.
-- Experiment 0 harness: not started.
+- Selected workstream: `EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS`.
+- Preregistration hardening: merged via PR #5.
+- Experiment 0 data contracts / F1–F8 fixture materialization: merged via PR #6.
+- Experiment 0 harness implementation: **started**.
+- Deterministic capture evaluator / HARD FAIL evaluator / provider-neutral adapter runner / transfer representation preparation / evidence-lock validation: current implementation scope.
+- Candidate Capture Gold and Transfer Oracle: **AI_PROPOSED_DRAFT — non-authoritative**.
+- Human-authored Gold / Oracle approval: **required before pilot**.
+- Harness-validation pilot: **not run**.
+- Evidence readiness: **false**.
+- Evidence lock: none.
 - E0-C evidence: not started.
 - E0-T evidence: not started.
-- Evidence runs: none.
 - Production architecture: not frozen.
 - Production runtime: not authorized.
 - Ecosystem integration: not authorized.
 - Event sourcing: not required.
-- State tiers: not canonical.
+- State hypotheses: not canonical.
 
 ## Current bounded work order
 
-1. Keep the completed Documentation Architecture v1 checkpoint reconciled with live GitHub lifecycle facts.
-2. Harden the Experiment 0 preregistration before evidence.
-3. Define bounded experimental state / fixture / Gold / Oracle / manifest / evaluation contracts.
-4. Materialize F1–F8 fixtures and human-authored Gold without model self-Gold.
-5. Implement deterministic evaluator and separate HARD FAIL evaluation.
-6. Implement only the minimal E0-C / E0-T harness required by Experiment 0.
-7. Run harness-validation pilot explicitly labeled **PILOT — NOT EVIDENCE**.
-8. Fix pilot defects before lock; version any material protocol change.
-9. Freeze protocol/schema/fixtures/Gold/Oracle/evaluator/run-config hashes and mark evidence readiness.
-10. **STOP.** Do not start E0-C evidence unless separately authorized.
-11. After separately authorized E0-C evidence and Capture analysis, run E0-T evidence.
-12. Perform mandatory Architecture Reassessment before any production architecture decision.
+1. Complete deterministic evaluator / minimal harness implementation and offline tests.
+2. Keep model/provider execution behind the provider-neutral adapter boundary.
+3. Require human experimenter review/approval of candidate Gold and Oracle; do not self-promote AI proposals into truth.
+4. Only after human approval, run `PILOT — NOT EVIDENCE` against pilot fixtures.
+5. Fix pilot defects; if semantics change, version the draft before lock.
+6. Freeze protocol/schema/evidence fixtures/Gold/Oracle/evaluator/run-config/prompts/randomization by hash.
+7. Mark evidence readiness only if the lock validates and human reference status is `HUMAN_APPROVED`.
+8. **STOP.** E0-C evidence requires a separate authorization.
+9. Later: E0-C evidence → Capture analysis → E0-T evidence → Transfer analysis → mandatory Architecture Reassessment.
 
-## Current non-claims
+## Critical non-claims
 
 Do not claim that:
 
-- the Experiment 0 harness has started merely because this milestone is selected;
-- E0-C or E0-T evidence has started;
-- a complex IDPS runtime has been justified;
-- `state.json` has been proven sufficient or insufficient;
+- synthetic/unit tests are an Experiment 0 pilot;
+- candidate Gold/Oracle are human-authored;
+- harness implementation means evidence execution has started;
+- E0-C or E0-T has started;
+- `state.json` is proven sufficient or insufficient;
 - event sourcing is required;
-- state tiers are canonical;
-- Capture Assurance has been validated;
-- model replacement continuity has been validated;
-- stale-successor handling has been tested;
-- Continuum is production-ready;
-- any ecosystem integration has been authorized.
+- a production IDPS runtime is justified;
+- Continuum is production-ready.
 
 ## Authority and freshness rule
 
-Use the fact owner appropriate to the question:
+- GitHub lifecycle facts → verify live GitHub.
+- Semantic project state / authorization flags → `project-state.json`.
+- Experiment semantics → canonical preregistration.
+- This file / `STATUS.md` → derived explanations.
 
-- GitHub lifecycle facts (`PR state`, `merge SHA`, branch `HEAD`) → verify live GitHub.
-- Selected semantic project state and authorization flags → `project-state.json`.
-- Experiment semantics → formal preregistration.
-- This file and `STATUS.md` → derived explanations.
-
-If a GitHub fact and committed semantic/derived state disagree, treat the disagreement as state drift. Do not silently infer a newer milestone or authorization. Reconcile the repository through a reviewable `STATE_CHANGE`.
+Any disagreement is state drift and must be reconciled through a reviewable state change.
