@@ -9,7 +9,7 @@
   "foundation_merge_sha": "e14cf46f96724dda933ce647b46f72fc4866dc7c",
   "current_workstream": "EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS",
   "current_workstream_status": "ACTIVE",
-  "current_workstream_pr": null,
+  "current_workstream_pr": 4,
   "completed_workstreams": [
     {
       "name": "DOCUMENTATION_ARCHITECTURE_V1",
