@@ -1,0 +1,51 @@
+name: Human reference approval binding gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "experiments/e0/gold/approved/**"
+      - "experiments/e0/oracle/approved/**"
+      - "experiments/e0/approval/human-reference-approval.v0.1.json"
+
+# This gate is deliberately NOT triggered by candidate corrections or by edits to
+# the validator/workflow itself. Candidate corrections must remain possible while
+# Issue #9 is open; validator/workflow code is covered by the normal E0 harness.
+# Once approved artifacts or the approval record are introduced/changed, this gate
+# fail-closes on provenance structure and exact hashes.
+permissions:
+  contents: read
+
+concurrency:
+  group: human-reference-approval-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify-human-reference-approval-bindings:
+    name: Verify Gold/Oracle approval attestation bindings
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+          check-latest: false
+
+      - name: Validate approval attestation and exact SHA-256 bindings
+        run: |
+          python scripts/e0/validate_human_reference_approval.py \
+            --repo-root . \
+            --approval experiments/e0/approval/human-reference-approval.v0.1.json \
+            --issue-number 9
+
+      - name: Re-run offline Experiment 0 contracts and guard tests
+        run: |
+          python scripts/e0/validate_contracts.py
+          python -m unittest discover -s tests/e0 -v
