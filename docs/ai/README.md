@@ -12,9 +12,12 @@ Do **not** reconstruct current project truth from the human-facing README alone.
 2. `AGENTS.md` — repository contract, scope boundaries and experimental discipline.
 3. `project-state.json` — selected semantic project state and authorization flags.
 4. `docs/ai/CURRENT_STATE.md` — derived plain-language explanation of volatile current state.
-5. `docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md` — canonical Experiment 0 protocol.
-6. Task-specific fixtures, evaluators, results or evidence when they exist.
-7. `RESEARCH_OVERVIEW.md` and `README.md` for human-oriented conceptual context.
+5. `docs/ai/AUDIT_AND_FUTURE_WORK.md` — durable audit queue, evidence anchors, revalidation triggers and non-authorization boundaries.
+6. `docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md` — canonical Experiment 0 protocol.
+7. Task-specific fixtures, evaluators, review/approval records, results or evidence when they exist.
+8. `RESEARCH_OVERVIEW.md` and `README.md` for human-oriented conceptual context.
+
+> **DO NOT AUTO-SELECT NEXT MILESTONE.** Audit order, an open Issue, a successful harness check, a ready review packet, or a future-work entry is not implementation/evidence/runtime authorization.
 
 ## Authority model
 
@@ -61,27 +64,58 @@ Never infer any of the following without explicit evidence:
 - a human-friendly README creates authority;
 - a merged documentation PR selects the next engineering milestone;
 - Experiment 0 completion automatically authorizes production runtime work;
-- Continuum is already approved for integration into Titan, Crystal, Native Kernel or Mentaury.
+- Continuum is already approved for integration into Titan, Crystal, Native Kernel or Mentaury;
+- `READY_FOR_HUMAN_ATTESTATION` means `HUMAN_APPROVED`;
+- a generic instruction to continue/finish work is item-level human Gold/Oracle review;
+- Pilot means Evidence or Evidence Lock means Evidence authorization.
 
 ## Current canonical sequence
 
+Fresh repository state must still be verified live. At the 2026-08-17 audit checkpoint the bounded program is:
+
 ```text
-Research foundation         ✅ merged
-Documentation architecture  ✅ PR #2 merged
-Next bounded milestone      ⏳ explicit selection pending
-Experiment 0 harness        ❌ not started
-E0-C evidence               ❌ not started
-E0-T evidence               ❌ not started
-Architecture Reassessment   ❌ not reached
-Production architecture     ❌ not frozen
-Production runtime          ❌ not authorized
+Research foundation                     ✅ merged
+Documentation architecture              ✅ merged
+Harness-readiness milestone             ✅ selected / ACTIVE
+Preregistration hardening               ✅ merged
+Schemas / F1–F8 / transfer fixtures     ✅ merged
+Deterministic evaluator / E0 harness     ✅ implemented and CI-validated
+Human-review engineering preparation    ✅ READY_FOR_HUMAN_ATTESTATION
+Human semantic Gold / Oracle approval    ⛔ NOT GRANTED
+Pilot — NOT EVIDENCE                     ⛔ not run
+Evidence Lock                            ❌ none
+E0-C evidence                            ❌ not started / not authorized by docs
+Capture analysis                         ❌ not reached
+E0-T evidence                            ❌ not started / not authorized by docs
+Transfer analysis                        ❌ not reached
+Architecture Reassessment               ❌ not reached
+Production architecture                 ❌ not frozen
+Production runtime                      ❌ not authorized
+Ecosystem integration                   ❌ not authorized
 ```
 
-The research sequence remains:
+The research dependency sequence is:
 
-`E0-C Capture Isolation → E0-T Transfer Isolation → mandatory Architecture Reassessment`
+`E0-C Capture Isolation → Capture analysis → E0-T Transfer Isolation → Transfer analysis → mandatory Architecture Reassessment`
 
-That sequence does not itself authorize the next engineering milestone.
+Before E0-C evidence, the current harness-readiness workstream still requires the human-reference gate, Pilot-only validation, allowed Pilot corrections, Evidence Lock, then **STOP**. None of those dependencies automatically authorize the next step.
+
+## Human-reference rule
+
+Issue #9 and `experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md` define the current research-integrity gate.
+
+```text
+AI_PROPOSED_DRAFT
+!= HUMAN_APPROVED
+
+machine-valid hashes / structure
+!= human semantic approval
+
+AI pre-review
+!= human attestation
+```
+
+A human reviewer must make item-level `ACCEPT / REVISE / REJECT` decisions against the bound candidate/version before authoritative Gold/Oracle may be materialized.
 
 ## Change classification
 
@@ -115,7 +149,7 @@ Repository automation may verify:
 - provenance lineage from a reviewed base commit to current `main`;
 - atomic updates of `project-state.json` with declared always-derived volatile state surfaces.
 
-Automation must **not** choose the next milestone, start Experiment 0, authorize runtime work, or change research conclusions.
+Automation must **not** choose the next milestone, start Experiment 0 evidence, authorize runtime work, or change research conclusions.
 
 ## Presentation never creates authority
 
@@ -123,6 +157,7 @@ Automation must **not** choose the next milestone, start Experiment 0, authorize
 - `STATUS.md` and `docs/ai/CURRENT_STATE.md` may summarize current state.
 - machine state may encode a selected semantic state.
 - evidence may justify a conclusion.
+- the future-work ledger may preserve open questions and dependency order.
 
 None of these may silently rewrite the formal experiment protocol or authorize production capability.
 
