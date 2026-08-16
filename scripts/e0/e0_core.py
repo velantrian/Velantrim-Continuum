@@ -67,6 +67,9 @@ def match_score(gold: dict[str, Any], actual: dict[str, Any]) -> int:
         score += 2
     if gold.get("authority") and gold.get("authority") == actual.get("authority"):
         score += 1
+    if gold.get("lifecycle_status") == actual.get("lifecycle_status"):
+        score += 1
+    score += min(token_overlap(gold.get("value"), actual.get("value")), 3)
     score += min(token_overlap(gold.get("entity"), actual.get("entity")), 2)
     score += min(token_overlap(gold.get("scope"), actual.get("scope")), 2)
     return score
@@ -83,7 +86,7 @@ def match_items(gold_items: list[dict[str, Any]], actual_items: list[dict[str, A
             remaining.remove(actual_index)
             continue
         ranked = sorted(((match_score(gold, actual_items[index]), index) for index in remaining), reverse=True)
-        # This is a deterministic item-association rule, not an architecture success threshold.
+        # Fixed deterministic association rule. This is not an architecture acceptance threshold.
         if ranked and ranked[0][0] >= 4:
             _, actual_index = ranked[0]
             matches[gold_index] = actual_index
@@ -94,7 +97,7 @@ def match_items(gold_items: list[dict[str, Any]], actual_items: list[dict[str, A
 def mismatch_atoms(gold: dict[str, Any], actual: dict[str, Any]) -> list[dict[str, Any]]:
     atoms: list[dict[str, Any]] = []
     for field in (
-        "entity", "kind", "scope", "condition", "origin", "authority", "temporal_validity",
+        "entity", "kind", "value", "scope", "condition", "origin", "authority", "temporal_validity",
         "epistemic_status", "resolution_status", "lifecycle_status", "rationale",
     ):
         expected = gold.get(field)
@@ -121,11 +124,7 @@ def classify_matched(gold: dict[str, Any], actual: dict[str, Any], atoms: list[d
     return "EXACT"
 
 
-def evaluate_capture(
-    gold_items: list[dict[str, Any]],
-    actual_state: dict[str, Any],
-    hard_fail_bindings: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+def evaluate_capture(gold_items: list[dict[str, Any]], actual_state: dict[str, Any], hard_fail_bindings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     errors = validate_state(actual_state)
     if errors:
         raise ValueError("; ".join(errors))
@@ -135,28 +134,15 @@ def evaluate_capture(
     by_gold_id: dict[str, dict[str, Any]] = {}
     for gold_index, gold in enumerate(gold_items):
         if gold_index not in matches:
-            result = {
-                "gold_item_id": gold["item_id"],
-                "actual_item_id": None,
-                "primary_outcome": "MISSED",
-                "mismatch_atoms": [],
-            }
+            result = {"gold_item_id": gold["item_id"], "actual_item_id": None, "primary_outcome": "MISSED", "mismatch_atoms": []}
         else:
             actual = actual_items[matches[gold_index]]
             atoms = mismatch_atoms(gold, actual)
-            result = {
-                "gold_item_id": gold["item_id"],
-                "actual_item_id": actual["item_id"],
-                "primary_outcome": classify_matched(gold, actual, atoms),
-                "mismatch_atoms": atoms,
-            }
+            result = {"gold_item_id": gold["item_id"], "actual_item_id": actual["item_id"], "primary_outcome": classify_matched(gold, actual, atoms), "mismatch_atoms": atoms}
         item_results.append(result)
         by_gold_id[gold["item_id"]] = result
 
-    fabrications = [
-        {"actual_item_id": actual_items[index]["item_id"], "primary_outcome": "FABRICATED"}
-        for index in extras
-    ]
+    fabrications = [{"actual_item_id": actual_items[index]["item_id"], "primary_outcome": "FABRICATED"} for index in extras]
     hard_fails: list[dict[str, Any]] = []
     for index, binding in enumerate(hard_fail_bindings or []):
         hard_fail_class = binding["hard_fail_class"]
@@ -170,7 +156,7 @@ def evaluate_capture(
         elif hard_fail_class == "FABRICATED_USER_AUTHORIZATION":
             for actual_index in extras:
                 actual = actual_items[actual_index]
-                text = " ".join(map(str, (actual.get("kind"), actual.get("authority"), actual.get("scope"), actual.get("condition")))).lower()
+                text = " ".join(map(str, (actual.get("kind"), actual.get("value"), actual.get("authority"), actual.get("scope"), actual.get("condition")))).lower()
                 if ("authoriz" in text or "approval" in text) and actual.get("lifecycle_status") == "ACTIVE":
                     triggered = True
                     evidence = f"fabricated active authorization item {actual.get('item_id')}"
@@ -180,19 +166,9 @@ def evaluate_capture(
             outcomes = [by_gold_id.get(value, {}).get("primary_outcome") for value in refs]
             triggered = any(value in {"CONFLICT_COLLAPSED", "OVER_PROMOTED"} for value in outcomes)
             evidence = "bound contested state promoted/collapsed" if triggered else None
-        hard_fails.append({
-            "class": hard_fail_class,
-            "binding_id": f"binding-{index + 1}",
-            "triggered": triggered,
-            "evidence": evidence,
-        })
+        hard_fails.append({"class": hard_fail_class, "binding_id": f"binding-{index + 1}", "triggered": triggered, "evidence": evidence})
 
-    return {
-        "evaluation_version": "0.1",
-        "item_results": item_results,
-        "fabrications": fabrications,
-        "hard_fails": hard_fails,
-    }
+    return {"evaluation_version": "0.1", "item_results": item_results, "fabrications": fabrications, "hard_fails": hard_fails}
 
 
 def require_human_reference(reference: dict[str, Any]) -> None:
@@ -217,10 +193,7 @@ def t4_eligibility(full_context_tokens: int, model_context_limit: int, reserved_
 
 
 def validate_manifest(manifest: dict[str, Any]) -> list[str]:
-    required_hashes = (
-        "protocol_sha256", "schema_sha256", "fixture_set_sha256", "gold_or_oracle_sha256",
-        "evaluator_sha256", "run_config_sha256",
-    )
+    required_hashes = ("protocol_sha256", "schema_sha256", "fixture_set_sha256", "gold_or_oracle_sha256", "evaluator_sha256", "run_config_sha256")
     errors: list[str] = []
     hash_pattern = re.compile(r"^[0-9a-f]{64}$")
     for key in required_hashes:
