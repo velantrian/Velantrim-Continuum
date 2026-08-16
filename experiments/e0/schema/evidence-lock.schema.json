@@ -2,7 +2,7 @@
   "$schema":"https://json-schema.org/draft/2020-12/schema",
   "$id":"velantrim-continuum:e0-evidence-lock:v0.1",
   "type":"object",
-  "required":["lock_version","status","protocol","schemas","evidence_fixtures","gold_oracle","evaluator","run_config","prompts","randomization","clarification_policy","generator_config","supersession_rule"],
+  "required":["lock_version","status","protocol","schemas","evidence_fixtures","gold_oracle","evaluator","run_config","prompts","randomization","clarification_policy","generator_config","supersession_rule","human_gold_approval","artifacts"],
   "properties":{
     "lock_version":{"const":"0.1"},
     "status":{"enum":["DRAFT","EVIDENCE_READY"]},
@@ -17,7 +17,8 @@
     "clarification_policy":{"$ref":"#/$defs/versioned_hash"},
     "generator_config":{"$ref":"#/$defs/versioned_hash"},
     "supersession_rule":{"$ref":"#/$defs/versioned_hash"},
-    "human_gold_approval":{"type":"object","required":["status","approved_by","approved_at"],"properties":{"status":{"enum":["REQUIRED","HUMAN_APPROVED"]},"approved_by":{"type":["string","null"]},"approved_at":{"type":["string","null"]}},"additionalProperties":false}
+    "human_gold_approval":{"type":"object","required":["status","approved_by","approved_at"],"properties":{"status":{"enum":["REQUIRED","HUMAN_APPROVED"]},"approved_by":{"type":["string","null"]},"approved_at":{"type":["string","null"]}},"additionalProperties":false},
+    "artifacts":{"type":"array","minItems":1,"items":{"type":"object","required":["path","sha256"],"properties":{"path":{"type":"string","minLength":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}},"additionalProperties":false}}
   },
   "additionalProperties":false,
   "$defs":{"versioned_hash":{"type":"object","required":["version","sha256"],"properties":{"version":{"type":"string"},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}},"additionalProperties":false}}
