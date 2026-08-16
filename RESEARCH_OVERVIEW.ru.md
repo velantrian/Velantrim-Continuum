@@ -4,7 +4,7 @@
 
 ## 1. Назначение
 
-Velantrim Continuum — human-oriented deep overview исследовательской линии IDPS. Этот документ объясняет conceptual model и research program, но не заменяет канонический preregistration Experiment 0.
+Velantrim Continuum — human-oriented deep overview исследовательской линии IDPS. Документ объясняет conceptual model и research program, но не заменяет канонический preregistration Experiment 0.
 
 Formal experiment protocol: [`docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`](docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md)
 
@@ -42,8 +42,6 @@ Causal/freshness experiments относятся к будущей работе; 
 
 ## 4. Capture vs Transfer
 
-Это центральная экспериментальная граница.
-
 ```text
 Natural interaction
        │
@@ -62,31 +60,23 @@ Successor
 
 ### Capture Failure
 
-Важная информация вообще не превращается в корректное structured state.
-
-Поздний handoff не способен надёжно сохранить то, что никогда не было captured.
+Важная информация не превращается в корректное structured state. Поздний handoff не способен надёжно сохранить то, что никогда не было captured.
 
 ### Transfer Failure
 
 State существует корректно, но теряется, искажается, misattributed, over-promoted или неправильно reconstructed для successor.
 
-Поэтому E0-T использует общий human-authored Oracle State и не смешивает результаты с quality of Capture.
+E0-T использует общий human-authored Oracle State, чтобы Capture quality не смешивался с Transfer.
 
 ## 5. Epistemic preservation
-
-Continuity должна сохранять epistemic status, а не только текст.
 
 - **Observed ≠ Inferred**
 - **Confidence ≠ Evidence**
 - **Contradiction ≠ Corruption**
 
-Неразрешённый конфликт должен оставаться unresolved, пока новое evidence не разрешит его. Caution не должен незаметно становиться hard prohibition. Несуществующий authorization не должен появляться в state.
-
-E0-C специально включает ambiguity, fabrication bait и unresolved contradiction.
+Неразрешённый конфликт должен оставаться unresolved. Caution не должен незаметно становиться hard prohibition. Несуществующий authorization не должен появляться в state.
 
 ## 6. Transactional continuity
-
-External operations создают другой класс continuity risk:
 
 ```text
 OP_INTENT
@@ -98,21 +88,21 @@ OP_DISPATCHED
 COMMITTED    FAILED       UNKNOWN
 ```
 
-`UNKNOWN` важен: отсутствие ответа не доказывает failure. Blind retry может повторить irreversible side effect.
-
-Exact production operation infrastructure находится вне scope Experiment 0.
+`UNKNOWN` важен: отсутствие ответа не доказывает failure. Blind retry может повторить irreversible side effect. Exact production operation infrastructure находится вне Experiment 0.
 
 ## 7. Candidate state hypotheses
 
-Ранее conceptual work рассматривал tiers:
+Старые цифровые state labels удалены из рабочей терминологии, потому что `T0`–`T4` теперь зарезервированы **только** за E0-T transfer arms.
 
-- **T1 — Critical / Enforceable**
-- **T2 — Authoritative Continuity State**
-- **T3 — Reconstructive / Lossy State**
+Для рабочих state hypotheses используются нечисловые названия:
 
-Это **working hypotheses, а не frozen ontology**. Experiment 0 может показать, что достаточно более простого деления `Authoritative` vs `Reconstructive`.
+- **`CRITICAL_ENFORCEABLE`** — потеря или неавторизованное изменение может создать неприемлемые внешние последствия.
+- **`AUTHORITATIVE_CONTINUITY`** — потеря ломает functional continuation, не обязательно вызывая немедленный safety failure.
+- **`RECONSTRUCTIVE_LOSSY`** — материал может быть сжат или восстановлен с допустимой bounded потерей.
 
-Точно так же event sourcing, ledgers, manifests, capability authority и version-aware commit gates являются candidate mechanisms, а не обязательной IDPS architecture.
+Это **working hypotheses, не frozen ontology**. Experiment 0 может показать, что достаточно ещё более простого деления.
+
+Event sourcing, ledgers, manifests, capability authority и version-aware commit gates также остаются candidate mechanisms, а не обязательной IDPS architecture.
 
 ## 8. Event history vs current state
 
@@ -126,26 +116,20 @@ state.json
 }
 ```
 
-Event history может reconstruct тот же current projection. Поэтому event sourcing должен оправдать себя через возможности, которые он действительно улучшает: replay, crash recovery, audit, concurrency или temporal provenance.
-
-Experiment 0 не должен давать event history преимущество только за архитектурную сложность.
+Event history может reconstruct тот же current projection. Поэтому event sourcing должен оправдать себя через реально добавляемые возможности, а не через архитектурную сложность.
 
 ## 9. Experiment 0
 
 ### E0-C — Capture Isolation
 
-Вопрос:
-
-> Что система способна корректно преобразовать из natural interaction в structured process state до любого handoff?
-
 Conditions:
 
-- `C0` Raw Context — behavior baseline, без external structured state.
-- `C1` LLM Extraction — прямой structured extraction.
-- `C2` Capture Assurance — явное ambiguity/unresolved handling и clarification where appropriate.
+- `C0` Raw Context — только behavior baseline, без comparable structured capture.
+- `C1` LLM Extraction — direct structured extraction.
+- `C2` Capture Assurance — ambiguity/unresolved handling и bounded clarification только там, где это preregistered.
 - `C3` Human-authored Oracle State — upper reference.
 
-Initial fixture families:
+Fixture families:
 
 1. explicit restriction;
 2. conditional restriction;
@@ -156,15 +140,11 @@ Initial fixture families:
 7. temporal rule;
 8. unresolved contradiction.
 
-Primary evaluation — structured-state fidelity, а не behavior.
+Primary evaluation — structured-state fidelity. C0 не включается в capture-accuracy table как будто он создаёт structured state.
 
 ### E0-T — Transfer Isolation
 
-Вопрос:
-
-> Если correct process state уже существует, какое representation достаточно для functional continuation?
-
-Candidate arms:
+`T0`–`T4` зарезервированы только для transfer arms:
 
 - `T0` Structured Summary;
 - `T1` Canonical Current State (`state.json`);
@@ -172,7 +152,7 @@ Candidate arms:
 - `T3` Projection + Reconstructive Manifest;
 - `T4` Full Context Reference.
 
-Все arms начинаются с одного Oracle State.
+Все arms начинают с одного Oracle State. Representation-generation fidelity оценивается отдельно от successor interpretation.
 
 ## 10. Primary null hypothesis
 
@@ -180,18 +160,23 @@ Candidate arms:
 
 Проект falsification-first. Сложность должна доказать собственную необходимость.
 
-Честные возможные результаты:
+Честный результат — в том числе ситуация, где careful capture + `state.json` полностью достаточны.
 
-- raw context достаточно для исследуемого task class;
-- Capture является dominant bottleneck;
-- `state.json` достаточно;
-- authoritative state + short narrative достаточно;
-- event history не нужен для обычного continuation;
-- более богатый substrate оправдан evidence.
+## 11. Evaluation discipline
 
-## 11. Mandatory Architecture Reassessment
+Hardened preregistration требует:
 
-После E0-C и E0-T:
+- один deterministic primary outcome на capture item + diagnostic mismatch atoms;
+- отдельный HARD FAIL evaluator с pre-bound правилами;
+- fixture-local C2 clarification budget;
+- запрет на silent truncation для T4 Full Context;
+- раздельную атрибуцию representation-generation и successor failure;
+- раздельный учёт cost, latency, storage и verification overhead;
+- architecture decision через `MATERIAL_GAIN`, `NO_MATERIAL_GAIN` или `TRADEOFF_INCONCLUSIVE`, без произвольных 95%/98% thresholds.
+
+Первые executable runs — только **PILOT — NOT EVIDENCE**. Evidence запрещён до hash-based evidence lock протокола, schemas, evidence fixtures, Gold/Oracle, evaluator и run config.
+
+## 12. Mandatory Architecture Reassessment
 
 ```text
 Evidence
@@ -206,21 +191,19 @@ Architecture Reassessment
 
 Завершение Experiment 0 само по себе не authorizes production architecture.
 
-## 12. Current non-claims
+## 13. Current non-claims
 
 Continuum сейчас не заявляет:
 
 - production-ready durable agent runtime;
 - exact cognitive identity across model replacement;
 - обязательность event sourcing;
-- canonical status T1/T2/T3;
+- canonical production ontology для state hypotheses;
 - обязательность конкретного model/database/storage vendor;
 - необходимость уже сейчас интегрировать Continuum в Titan, Crystal, Native Kernel или Mentaury;
 - novelty claims вроде «first persistent/durable agent system».
 
-## 13. Documentation authority
-
-Для current project state используются отдельные слои:
+## 14. Documentation authority
 
 - human understanding → `README.md` / этот overview;
 - AI routing → `docs/ai/README.md`;
@@ -230,4 +213,4 @@ Continuum сейчас не заявляет:
 - formal experiment protocol → `docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`;
 - external research record → canonical Notion page.
 
-Presentation может объяснять truth, но не создаёт authority.
+Presentation объясняет truth, но не создаёт authority.
