@@ -13,7 +13,8 @@
 | Foundation merge SHA | `e14cf46f96724dda933ce647b46f72fc4866dc7c` |
 | Documentation Architecture v1 | ✅ PR #2 merged |
 | Documentation PR #2 merge SHA | `533cc6abcf59d20f7a273098f043784c95421711` |
-| Next bounded engineering milestone | ⏳ Not selected |
+| Next bounded engineering milestone | ✅ `EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS` selected |
+| Current workstream | 🔄 Active — evaluation contract / harness readiness only |
 | Experiment 0 harness | ❌ Not started |
 | E0-C Capture Isolation | ❌ Not started |
 | E0-T Transfer Isolation | ❌ Not started |
@@ -29,16 +30,26 @@ Documentation Architecture v1
         ↓
 ✅ PR #2 merged
         ↓
-explicit next-bounded-milestone selection
+✅ next bounded milestone explicitly selected
         ↓
-when explicitly authorized:
-Experiment 0 harness
+EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS
         ↓
-E0-C Capture Isolation
+preregistration hardening
+        ↓
+experimental data contracts + evaluator + minimal harness
+        ↓
+PILOT — NOT EVIDENCE
+        ↓
+evidence lock
+        ↓
+🛑 STOP
+        ↓
+only when separately authorized:
+E0-C Capture Isolation evidence
         ↓
 Capture analysis
         ↓
-E0-T Transfer Isolation
+E0-T Transfer Isolation evidence
         ↓
 Transfer analysis
         ↓
@@ -63,4 +74,6 @@ Transfer analysis
 
 ## Boundary
 
-The merge of PR #2 completed the documentation architecture only. It did **not** select the next engineering milestone, start Experiment 0, freeze production architecture, authorize production runtime, or authorize ecosystem integration.
+Selecting `EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS` authorizes only the bounded preparation needed to make Experiment 0 executable, reproducible and falsifiable: preregistration hardening, experimental data contracts, deterministic evaluation, minimal harness implementation, non-evidence pilot validation and evidence lock.
+
+It does **not** start the Experiment 0 harness by itself, start E0-C or E0-T evidence, freeze production architecture, authorize production runtime, require event sourcing, make state tiers canonical, or authorize ecosystem integration.
