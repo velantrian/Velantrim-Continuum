@@ -1,8 +1,8 @@
 # Issue #9 — Human Gold / Oracle review protocol
 
 **Scope:** Experiment 0 human-reference gate only.  
-**Reviewed baseline commit:** `b95ad363409400043636fcdd7908feba97901111`  
-**Status:** `AWAITING_HUMAN_DECISION`
+**Reviewed baseline commit:** `d75bfdd27a2a61b496be5b12ab9451a0fd79d1a7`  
+**Status:** `READY_FOR_HUMAN_ATTESTATION`
 
 This document is a review packet, not an approval record. It must never be used to infer `HUMAN_APPROVED` from an AI recommendation or from a generic instruction to continue implementation.
 
@@ -53,7 +53,28 @@ A generic `looks good`, `continue`, or AI-generated recommendation is not a subs
 
 ## AI semantic pre-review
 
-The current AI pre-review found no additional blocking semantic defect after PR #8. This is only an **AI recommendation to inspect/accept**, not human approval. The human reviewer remains responsible for every row above.
+The current AI pre-review against baseline `d75bfdd27a2a61b496be5b12ab9451a0fd79d1a7` found no additional blocking semantic defect after PR #8, PR #10, and PR #11. In particular:
+
+- F3 retains the superseded broad approval rule and the active revised scoped rule;
+- F6 remains negative knowledge and does not create permission or authorization;
+- F8 preserves two source-attributed contested values without adjudication;
+- Transfer Oracle scenarios preserve `COMMITTED` and `UNKNOWN` separately and do not promote internal/local permissions into external/production authority.
+
+This is only an **AI recommendation to inspect/accept**, not human approval. The human reviewer remains responsible for every row above.
+
+## Human attestation readiness
+
+Engineering preparation for the human-reference decision is complete at this baseline:
+
+- review protocol exists;
+- review snapshot machinery exists;
+- candidate history remains `AI_PROPOSED_DRAFT`;
+- approval-binding validator and CI gate exist;
+- approval PR template exists;
+- no Pilot or Evidence has been run;
+- Evidence Lock remains absent.
+
+No further engineering change is required before the human reviewer records item-level decisions. Any future code or candidate change invalidates this readiness baseline and requires a new reviewed commit/hash snapshot.
 
 ## If any item is REVISE or REJECT
 
