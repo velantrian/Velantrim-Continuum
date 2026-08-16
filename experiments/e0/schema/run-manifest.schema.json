@@ -1,0 +1,29 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"velantrim-continuum:e0-run-manifest:v0.1",
+  "type":"object",
+  "required":["run_id","run_type","experiment_version","protocol_sha256","schema_sha256","fixture_set_sha256","gold_or_oracle_sha256","evaluator_sha256","run_config_sha256","condition_or_arm","fixture_id","model","artifacts","measurements"],
+  "properties":{
+    "run_id":{"type":"string","minLength":1},
+    "run_type":{"enum":["PILOT","EVIDENCE"]},
+    "experiment_version":{"type":"string","minLength":1},
+    "protocol_sha256":{"$ref":"#/$defs/hash"},
+    "schema_sha256":{"$ref":"#/$defs/hash"},
+    "fixture_set_sha256":{"$ref":"#/$defs/hash"},
+    "gold_or_oracle_sha256":{"$ref":"#/$defs/hash"},
+    "evaluator_sha256":{"$ref":"#/$defs/hash"},
+    "run_config_sha256":{"$ref":"#/$defs/hash"},
+    "condition_or_arm":{"enum":["C0","C1","C2","C3","T0","T1","T2","T3","T4"]},
+    "fixture_id":{"type":"string"},
+    "model":{"type":"object","required":["provider","identifier","settings"],"properties":{"provider":{"type":"string"},"identifier":{"type":"string"},"settings":{"type":"object"},"prompt_version":{"type":["string","null"]},"seed":{"type":["integer","null"]}},"additionalProperties":false},
+    "generator":{"type":["object","null"]},
+    "timestamps":{"type":"object"},
+    "artifacts":{"type":"object","additionalProperties":{"$ref":"#/$defs/hash"}},
+    "measurements":{"type":"object","properties":{"input_tokens":{"$ref":"#/$defs/measure"},"output_tokens":{"$ref":"#/$defs/measure"},"latency_ms":{"$ref":"#/$defs/measure"},"cost":{"$ref":"#/$defs/measure"},"storage_bytes":{"$ref":"#/$defs/measure"},"clarification_turns":{"$ref":"#/$defs/measure"},"model_calls":{"$ref":"#/$defs/measure"},"tool_calls":{"$ref":"#/$defs/measure"}},"additionalProperties":false}
+  },
+  "additionalProperties":false,
+  "$defs":{
+    "hash":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "measure":{"type":"object","required":["provenance","value"],"properties":{"provenance":{"enum":["MEASURED","ESTIMATED","UNAVAILABLE"]},"value":{"type":["number","integer","null"]},"unit":{"type":["string","null"]}},"additionalProperties":false}
+  }
+}

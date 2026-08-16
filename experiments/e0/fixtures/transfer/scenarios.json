@@ -1,0 +1,20 @@
+{
+  "transfer_fixture_version":"0.1",
+  "scenarios":[
+    {
+      "scenario_id":"T-PILOT-01","partition":"PILOT",
+      "source_context":"A release team is preparing a public changelog. Goal: finish the release package. Current step: verify final notes. Publishing requires explicit user approval. The hosted API was rejected for unstable throttling. A security claim is disputed between source A and source B. Build artifact rel-42 exists. Upload operation op-17 is COMMITTED. Notification operation op-18 is UNKNOWN because the response was lost. The scope was revised: internal draft generation is allowed, public publication is not approved.",
+      "required_oracle_dimensions":["active_goal","task_position","constraint","accepted_decision","rejected_alternative","unresolved_question","contested_claim","rationale","committed_operation","unknown_operation","artifact_reference","mid_task_revision"]
+    },
+    {
+      "scenario_id":"T-EVIDENCE-01","partition":"EVIDENCE",
+      "source_context":"A client briefing is mid-preparation. Goal: deliver the approved briefing. Current step: incorporate legal edits. External sending requires user approval. Competitor references are a caution, not a ban. The previous third-party research API was rejected for unreliable rate limits. Whether chart 7 is current remains unresolved. Sources A and B disagree about deployment approval. Artifact brief-v12 is current. File upload op-31 is COMMITTED; notification op-32 is UNKNOWN after a timeout. A revision exempts internal review copies from the external-send approval requirement.",
+      "required_oracle_dimensions":["active_goal","task_position","constraint","accepted_decision","rejected_alternative","unresolved_question","contested_claim","rationale","committed_operation","unknown_operation","artifact_reference","mid_task_revision"]
+    },
+    {
+      "scenario_id":"T-EVIDENCE-02","partition":"EVIDENCE",
+      "source_context":"A migration plan is being prepared. Goal: complete a reversible migration proposal. Current step: validate rollback assumptions. Production execution remains forbidden without explicit approval. SQLite was accepted for the prototype; the hosted event service was rejected after reliability testing. The owner of one legacy dependency is unresolved. Source A says the compliance exception is granted; source B says it is pending. Artifact migration-plan-r8 is authoritative. Dry-run op-44 is COMMITTED; external ticket creation op-45 is UNKNOWN after connection loss. A later revision permits local simulation but does not permit production execution.",
+      "required_oracle_dimensions":["active_goal","task_position","constraint","accepted_decision","rejected_alternative","unresolved_question","contested_claim","rationale","committed_operation","unknown_operation","artifact_reference","mid_task_revision"]
+    }
+  ]
+}
