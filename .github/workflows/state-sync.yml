@@ -1,0 +1,54 @@
+name: State control plane
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  state-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Collect PR changed files
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD" > changed-files.txt
+          cat changed-files.txt
+
+      - name: Collect push changed files
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" > changed-files.txt
+          cat changed-files.txt
+
+      - name: Compile state-control scripts
+        run: |
+          python -m py_compile scripts/check_state_sync.py scripts/state_sync_rules.py
+
+      - name: Run state-control unit tests
+        run: |
+          python -m unittest -v tests/test_state_sync_rules.py
+
+      - name: Reconcile committed state against GitHub
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/check_state_sync.py \
+            --state-file project-state.json \
+            --changed-files-file changed-files.txt \
+            --mode check
