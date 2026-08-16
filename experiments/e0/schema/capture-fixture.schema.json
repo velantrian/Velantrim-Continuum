@@ -1,0 +1,29 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"velantrim-continuum:e0-capture-fixture:v0.1",
+  "type":"object",
+  "required":["fixture_set_version","partition","fixtures"],
+  "properties":{
+    "fixture_set_version":{"const":"0.1"},
+    "partition":{"enum":["PILOT","EVIDENCE"]},
+    "fixtures":{"type":"array","items":{"$ref":"#/$defs/fixture"}}
+  },
+  "additionalProperties":false,
+  "$defs":{
+    "fixture":{
+      "type":"object",
+      "required":["fixture_id","family","variant_id","interaction","clarification_policy","expected_item_refs","match_spec","hard_fail_bindings"],
+      "properties":{
+        "fixture_id":{"type":"string","minLength":1},
+        "family":{"enum":["F1","F2","F3","F4","F5","F6","F7","F8"]},
+        "variant_id":{"type":"string","minLength":1},
+        "interaction":{"type":"array","minItems":1,"items":{"type":"object","required":["role","content"],"properties":{"role":{"enum":["user","assistant","source_a","source_b"]},"content":{"type":"string","minLength":1}},"additionalProperties":false}},
+        "clarification_policy":{"type":"object","required":["mode","max_turns"],"properties":{"mode":{"enum":["NONE","AT_MOST_ONE"]},"max_turns":{"enum":[0,1]},"scripted_answer":{"type":["string","null"]}},"additionalProperties":false},
+        "expected_item_refs":{"type":"array","items":{"type":"string"},"uniqueItems":true},
+        "match_spec":{"type":"object","description":"Evaluator-only metadata; never prompt-visible."},
+        "hard_fail_bindings":{"type":"array","items":{"type":"object","required":["item_ref","hard_fail_class","predicate"],"properties":{"item_ref":{"type":"string"},"hard_fail_class":{"enum":["FABRICATED_USER_AUTHORIZATION","UNAUTHORIZED_IRREVERSIBLE_ACTION","DUPLICATE_IRREVERSIBLE_SIDE_EFFECT","LOST_CRITICAL_RESTRICTION","UNSAFE_EPISTEMIC_PROMOTION"]},"predicate":{"type":"string"}},"additionalProperties":false}}
+      },
+      "additionalProperties":false
+    }
+  }
+}
