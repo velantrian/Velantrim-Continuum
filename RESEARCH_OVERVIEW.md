@@ -104,13 +104,15 @@ Exact production operation infrastructure is outside Experiment 0.
 
 ## 7. Candidate state hypotheses
 
-Earlier conceptual work considered tiers such as:
+Earlier conceptual work considered three consequence-of-loss categories. The old numeric labels were removed because `T0`–`T4` are now reserved exclusively for E0-T transfer arms.
 
-- **T1 — Critical / Enforceable**
-- **T2 — Authoritative Continuity State**
-- **T3 — Reconstructive / Lossy State**
+Use these non-numeric working names:
 
-These are **working hypotheses, not frozen ontology**. Experiment 0 may show that a simpler split such as `Authoritative` vs `Reconstructive` is sufficient.
+- **`CRITICAL_ENFORCEABLE`** — loss or unauthorized mutation may create unacceptable externally relevant consequences.
+- **`AUTHORITATIVE_CONTINUITY`** — loss breaks functional continuation without necessarily causing an immediate external safety failure.
+- **`RECONSTRUCTIVE_LOSSY`** — material may be compressed or regenerated with bounded quality loss.
+
+These remain **working hypotheses, not a frozen ontology**. Experiment 0 may show that a simpler split is sufficient.
 
 Similarly, event sourcing, ledgers, manifests, capability authority and version-aware commit gates are candidate mechanisms rather than required IDPS architecture.
 
@@ -142,7 +144,7 @@ Conditions:
 
 - `C0` Raw Context — behavior baseline, no external structured state.
 - `C1` LLM Extraction — direct structured extraction.
-- `C2` Capture Assurance — explicit ambiguity/unresolved handling and clarification where appropriate.
+- `C2` Capture Assurance — explicit ambiguity/unresolved handling and bounded clarification only where preregistered.
 - `C3` Human-authored Oracle State — upper reference.
 
 Initial fixture families:
@@ -156,7 +158,7 @@ Initial fixture families:
 7. temporal rule;
 8. unresolved contradiction.
 
-Primary evaluation is structured-state fidelity, not behavior.
+Primary evaluation is structured-state fidelity, not behavior. C0 remains behavior-only and is not scored as a structured capture arm.
 
 ### E0-T — Transfer Isolation
 
@@ -164,7 +166,7 @@ Question:
 
 > If correct process state already exists, what representation is sufficient for functional continuation?
 
-Candidate arms:
+Transfer-arm identifiers are reserved exclusively for these experimental arms:
 
 - `T0` Structured Summary;
 - `T1` Canonical Current State (`state.json`);
@@ -172,7 +174,7 @@ Candidate arms:
 - `T3` Projection + Reconstructive Manifest;
 - `T4` Full Context Reference.
 
-All arms begin from the same Oracle State.
+All arms begin from the same Oracle State. Representation-generation fidelity is evaluated separately from successor interpretation.
 
 ## 10. Primary null hypothesis
 
@@ -189,9 +191,25 @@ Honest possible outcomes include:
 - event history is unnecessary for ordinary continuation;
 - a richer substrate is justified by evidence.
 
-## 11. Mandatory Architecture Reassessment
+## 11. Evaluation discipline
 
-After E0-C and E0-T:
+Experiment 0 does not use one weighted Continuity Score.
+
+The hardened preregistration requires:
+
+- one deterministic primary outcome per evaluated capture item plus diagnostic mismatch atoms;
+- separate HARD FAIL evaluation bound before evidence;
+- fixture-local C2 clarification limits;
+- no silent truncation of T4 Full Context;
+- separate representation-generation and successor-attribution stages;
+- separate cost, latency, storage and verification accounting;
+- architecture-level `MATERIAL_GAIN`, `NO_MATERIAL_GAIN` or `TRADEOFF_INCONCLUSIVE` decisions instead of invented percentage thresholds.
+
+The first executable runs are **PILOT — NOT EVIDENCE**. Evidence execution is forbidden until the protocol, schemas, evidence fixtures, Gold/Oracle, evaluator and run configuration are locked by hash.
+
+## 12. Mandatory Architecture Reassessment
+
+After E0-C and E0-T evidence:
 
 ```text
 Evidence
@@ -206,19 +224,19 @@ Architecture Reassessment
 
 No production architecture is authorized automatically by completing Experiment 0.
 
-## 12. Current non-claims
+## 13. Current non-claims
 
 Continuum does not currently claim:
 
 - a production-ready durable agent runtime;
 - exact cognitive identity across model replacement;
 - that event sourcing is required;
-- that T1/T2/T3 is canonical;
+- that any state hypothesis is a canonical production ontology;
 - that any particular model/database/storage vendor is required;
 - that Continuum should already be integrated into Titan, Crystal, Native Kernel or Mentaury;
 - novelty claims such as being the first persistent or durable agent system.
 
-## 13. Documentation authority
+## 14. Documentation authority
 
 For current project state, use the repository’s dedicated layers:
 
