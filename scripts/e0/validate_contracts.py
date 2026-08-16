@@ -11,7 +11,7 @@ def load(relative: str) -> dict:
     return json.loads((ROOT / relative).read_text(encoding="utf-8"))
 
 
-def validate_fixture_set(relative: str, expected_partition: str) -> list[str]:
+def validate_fixture_set(relative: str, expected_partition: str, candidate_gold: dict) -> list[str]:
     document = load(relative)
     errors: list[str] = []
     if document.get("partition") != expected_partition:
@@ -33,6 +33,11 @@ def validate_fixture_set(relative: str, expected_partition: str) -> list[str]:
             errors.append(f"{fixture.get('fixture_id')}: AT_MOST_ONE must have max_turns=1")
         if turns not in {0, 1}:
             errors.append(f"{fixture.get('fixture_id')}: clarification budget exceeds protocol")
+        family = fixture.get("family")
+        candidate_ids = {item.get("item_id") for item in candidate_gold.get("items_by_family", {}).get(family, [])}
+        missing_refs = set(fixture.get("expected_item_refs", [])) - candidate_ids
+        if missing_refs:
+            errors.append(f"{fixture.get('fixture_id')}: candidate Gold missing refs {sorted(missing_refs)}")
     return errors
 
 
@@ -44,8 +49,11 @@ def main() -> int:
             json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             errors.append(f"{path}: invalid JSON: {exc}")
-    errors += validate_fixture_set("experiments/e0/fixtures/capture/pilot/fixtures.json", "PILOT")
-    errors += validate_fixture_set("experiments/e0/fixtures/capture/evidence/fixtures.json", "EVIDENCE")
+
+    candidate_gold = load("experiments/e0/gold/candidates/capture-gold.ai-proposed.json")
+    candidate_oracle = load("experiments/e0/oracle/candidates/transfer-oracle.ai-proposed.json")
+    errors += validate_fixture_set("experiments/e0/fixtures/capture/pilot/fixtures.json", "PILOT", candidate_gold)
+    errors += validate_fixture_set("experiments/e0/fixtures/capture/evidence/fixtures.json", "EVIDENCE", candidate_gold)
 
     pilot = load("experiments/e0/fixtures/capture/pilot/fixtures.json")
     evidence = load("experiments/e0/fixtures/capture/evidence/fixtures.json")
@@ -53,9 +61,6 @@ def main() -> int:
         errors.append("pilot capture fixture count must be 8")
     if len(evidence.get("fixtures", [])) != 16:
         errors.append("evidence capture fixture count must be 16")
-
-    candidate_gold = load("experiments/e0/gold/candidates/capture-gold.ai-proposed.json")
-    candidate_oracle = load("experiments/e0/oracle/candidates/transfer-oracle.ai-proposed.json")
     if candidate_gold.get("authorship_status") != "AI_PROPOSED_DRAFT":
         errors.append("candidate Gold must remain AI_PROPOSED_DRAFT")
     if candidate_oracle.get("authorship_status") != "AI_PROPOSED_DRAFT":
