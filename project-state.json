@@ -7,9 +7,9 @@
   "research_foundation": "MERGED",
   "foundation_pr": 1,
   "foundation_merge_sha": "e14cf46f96724dda933ce647b46f72fc4866dc7c",
-  "current_workstream": "NEXT_BOUNDED_ENGINEERING_MILESTONE_SELECTION",
-  "current_workstream_status": "PENDING_EXPLICIT_SELECTION",
-  "current_workstream_pr": null,
+  "current_workstream": "EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS",
+  "current_workstream_status": "ACTIVE",
+  "current_workstream_pr": 4,
   "completed_workstreams": [
     {
       "name": "DOCUMENTATION_ARCHITECTURE_V1",
@@ -19,7 +19,7 @@
       "merge_commit_sha": "533cc6abcf59d20f7a273098f043784c95421711"
     }
   ],
-  "next_engineering_milestone": null,
+  "next_engineering_milestone": "EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS",
   "experiment_0_harness_started": false,
   "e0c_started": false,
   "e0t_started": false,
@@ -42,8 +42,8 @@
   ],
   "primary_null_hypothesis": "A simple externally maintained current-state representation may be sufficient.",
   "state_provenance": {
-    "verified_base_head_sha": "6509f0d56cd0b9402a552fa1115cb2eb8431b3a1",
-    "reconciled_at": "2026-08-16T06:58:16Z",
+    "verified_base_head_sha": "edea1920b40cc710849076de5faf809d6d75930f",
+    "reconciled_at": "2026-08-16T14:18:48Z",
     "reconciliation_kind": "STATE_CHANGE"
   },
   "state_sync": {
