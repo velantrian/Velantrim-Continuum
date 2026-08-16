@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "velantrim-continuum:e0-state:v0.1",
+  "title": "Experiment 0 Structured State",
+  "type": "object",
+  "required": ["schema_version", "items"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "items": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/state_item"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "nullable_string": {"type": ["string", "null"]},
+    "state_item": {
+      "type": "object",
+      "required": ["item_id", "entity", "kind", "epistemic_status", "resolution_status", "lifecycle_status"],
+      "properties": {
+        "item_id": {"type": "string", "minLength": 1},
+        "entity": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "scope": {"$ref": "#/$defs/nullable_string"},
+        "condition": {"$ref": "#/$defs/nullable_string"},
+        "origin": {"$ref": "#/$defs/nullable_string"},
+        "authority": {"$ref": "#/$defs/nullable_string"},
+        "temporal_validity": {"$ref": "#/$defs/nullable_string"},
+        "epistemic_status": {"enum": ["OBSERVED", "INFERRED", "CAUTION", "UNRESOLVED", "CONTESTED", "CONFIRMED", "NOT_APPLICABLE"]},
+        "resolution_status": {"enum": ["RESOLVED", "UNRESOLVED", "CONTESTED", "NOT_APPLICABLE"]},
+        "lifecycle_status": {"enum": ["ACTIVE", "INACTIVE", "REJECTED", "SUPERSEDED", "PENDING", "UNKNOWN", "NOT_APPLICABLE"]},
+        "rationale": {"$ref": "#/$defs/nullable_string"},
+        "source_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    }
+  }
+}
