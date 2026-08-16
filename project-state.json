@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "project": "Velantrim Continuum",
   "technical_name": "IDPS",
   "technical_expansion": "Inference-Decoupled Process Substrate",
@@ -20,7 +20,11 @@
     }
   ],
   "next_engineering_milestone": "EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS",
-  "experiment_0_harness_started": false,
+  "experiment_0_harness_started": true,
+  "experiment_0_harness_status": "IMPLEMENTATION_IN_PROGRESS",
+  "experiment_0_pilot_status": "BLOCKED_HUMAN_REFERENCE_APPROVAL",
+  "experiment_0_evidence_ready": false,
+  "experiment_0_evidence_lock_sha": null,
   "e0c_started": false,
   "e0t_started": false,
   "architecture_reassessment_reached": false,
@@ -42,8 +46,8 @@
   ],
   "primary_null_hypothesis": "A simple externally maintained current-state representation may be sufficient.",
   "state_provenance": {
-    "verified_base_head_sha": "edea1920b40cc710849076de5faf809d6d75930f",
-    "reconciled_at": "2026-08-16T14:18:48Z",
+    "verified_base_head_sha": "098f03ddbabef042051fe8a6c8ae63c0e770af7f",
+    "reconciled_at": "2026-08-16T14:30:00Z",
     "reconciliation_kind": "STATE_CHANGE"
   },
   "state_sync": {
