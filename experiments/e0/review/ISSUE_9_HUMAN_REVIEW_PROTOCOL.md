@@ -1,14 +1,16 @@
 # Issue #9 — Human Gold / Oracle review protocol
 
 **Scope:** Experiment 0 human-reference gate only.  
-**Reviewed baseline commit:** `d75bfdd27a2a61b496be5b12ab9451a0fd79d1a7`  
-**Status:** `REQUIRES_FRESH_REVIEW_AFTER_REFERENCE_CONFORMANCE_FIX`
+**Previous reviewed baseline commit:** `d75bfdd27a2a61b496be5b12ab9451a0fd79d1a7` — **STALE**  
+**Status:** `REQUIRES_FRESH_REVIEW_AFTER_REFERENCE_CONFORMANCE_AND_BINDING_FIX`
 
 This document is a review packet, not an approval record. It must never be used to infer `HUMAN_APPROVED` from an AI recommendation or from a generic instruction to continue implementation.
 
-> **Freshness note:** the previous attestation-ready baseline is no longer sufficient once this bounded reference/approval-conformance correction changes candidate/reference semantics or review representation. A fresh exact reviewed commit and review snapshot are required before human approval.
+> **Freshness note:** the previous attestation-ready baseline is no longer sufficient after reference/approval-conformance corrections and reviewed-byte binding corrections. A fresh exact reviewed commit and review snapshot are required before human approval.
 
 ## Review inputs
+
+The exact human-review snapshot scope is these six repository paths:
 
 - `experiments/e0/fixtures/capture/pilot/fixtures.json`
 - `experiments/e0/fixtures/capture/evidence/fixtures.json`
@@ -17,7 +19,31 @@ This document is a review packet, not an approval record. It must never be used 
 - `experiments/e0/oracle/candidates/transfer-oracle.ai-proposed.json`
 - `docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`
 
-Use `python3 scripts/e0/review_snapshot.py` to produce a SHA-256 review-input snapshot outside the repository or for attachment to Issue #9. The current snapshot mechanism does not by itself prove reviewed-commit/tree-byte binding; that separate control is not silently claimed here.
+No additional path may silently enter the snapshot scope, and none of these six may silently disappear.
+
+## Exact reviewed-commit / reviewed-byte binding
+
+Use snapshot v0.2:
+
+```text
+python3 scripts/e0/review_snapshot.py \
+  --repo-root . \
+  --reviewed-commit <full-40-character-lowercase-commit-SHA> \
+  --output /path/outside/repo/issue-9-review-snapshot.json
+```
+
+The snapshot must be derived from the **Git tree of the supplied commit**, not from current filesystem bytes. It binds:
+
+- an existing exact commit SHA;
+- that commit's exact tree SHA;
+- all six protocol-defined review paths;
+- each path's Git blob SHA;
+- each path's SHA-256 over the blob bytes;
+- one canonical SHA-256 over the snapshot material.
+
+A commit-shaped string is not sufficient. A current-working-tree hash is not sufficient. A supplied snapshot hash without independent recomputation is not sufficient.
+
+If the working tree changes after the reviewed commit is selected, regenerating the snapshot for that same commit must produce the same result.
 
 ## Decision vocabulary
 
@@ -82,37 +108,45 @@ The exact storage/key mechanism is an implementation detail. The reference contr
 
 ## AI semantic pre-review
 
-Previous AI pre-review findings are historical inputs only. This correction invalidates any claim that the old review baseline is sufficient for a new approval. Human review must bind a fresh exact repository state after the bounded fix.
+Previous AI pre-review findings are historical inputs only. They do not establish current human approval. Human review must bind a fresh exact repository state after the bounded corrections.
 
 ## Human attestation readiness
 
 A future `READY_FOR_HUMAN_ATTESTATION` state requires, at minimum:
 
 - the review protocol is frozen for that review;
-- candidate/reference inputs are frozen for that review;
+- candidate/reference inputs are frozen in an exact Git commit;
 - all 14 canonical rows are enumerated and representation-aligned;
-- the review snapshot is regenerated for the new reviewed state;
+- snapshot v0.2 is generated from that commit tree for exactly the six review inputs above;
+- the approval validator can independently resolve the commit, recompute its tree/snapshot, and match the candidate bindings;
 - machine/human decision namespaces remain separated;
 - no Pilot or Evidence has been run;
 - Evidence Lock remains absent.
 
-This section does not claim that commit-tree/reviewed-byte binding is already solved; that remains a separate owner-controlled remediation area.
+Passing this machine binding check proves only the checked repository relationship. It does not prove that a human read, understood, or semantically approved the materials.
 
 ## If any item is REVISE or REJECT
 
 1. Change only the relevant candidate/fixture/schema/test artifacts in a bounded correction PR.
 2. Keep candidate status `AI_PROPOSED_DRAFT`.
-3. Regenerate the review snapshot.
-4. Re-review all affected rows.
+3. Select a new reviewed commit after the correction is merged/frozen.
+4. Regenerate snapshot v0.2 from that commit tree.
+5. Re-review all affected rows.
 
 ## Approval record requirements
 
-Only after every one of the 14 human rows is `ACCEPT`, create versioned approved copies outside `candidates/`, preserving candidate history. The approval record must bind:
+Only after every one of the 14 human rows is `ACCEPT`, create versioned approved copies outside `candidates/`, preserving candidate history. The approval record must use:
+
+`experiments/e0/approval/human-reference-approval.v0.2.json`
+
+and bind:
 
 - reviewer identity / role;
 - approval timestamp;
-- reviewed commit identifier under the then-approved binding law;
-- candidate paths and SHA-256 hashes;
+- exact existing reviewed commit SHA;
+- exact reviewed tree SHA;
+- snapshot version `0.2` and canonical snapshot SHA-256;
+- candidate paths and SHA-256 hashes matching the reviewed commit bytes;
 - approved artifact paths and SHA-256 hashes;
 - semantic version;
 - Issue #9 reference;
