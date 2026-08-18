@@ -162,7 +162,16 @@ class ApprovalValidatorTests(unittest.TestCase):
             path = root / approval["references"]["capture_gold"]["candidate_path"]
             path.write_text(json.dumps({"gold_version": "0.3-candidate", "authorship_status": "AI_PROPOSED_DRAFT", "drift": True}), encoding="utf-8")
             approval["references"]["capture_gold"]["candidate_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
-            with self.assertRaisesRegex(ValidationError, "differs from reviewed-commit bytes"):
+            with self.assertRaisesRegex(ValidationError, "current review input differs from reviewed-commit bytes"):
+                validate(approval, root, 9)
+
+    def test_non_candidate_review_input_drift_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            approval = self.build_valid_case(root)
+            prereg = root / "docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md"
+            prereg.write_text("prereg changed after review\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValidationError, "current review input differs from reviewed-commit bytes"):
                 validate(approval, root, 9)
 
     def test_candidate_must_remain_draft_in_reviewed_commit_and_current_tree(self) -> None:
