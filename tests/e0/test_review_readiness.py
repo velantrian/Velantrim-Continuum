@@ -1,5 +1,7 @@
 import importlib.util
+import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -9,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "e0"))
 
 from e0_core import require_human_reference
-from review_snapshot import build_snapshot
+from review_snapshot import SnapshotError, build_snapshot
 
 EVALUATE_PATH = ROOT / "scripts" / "e0" / "evaluate_capture.py"
 spec = importlib.util.spec_from_file_location("evaluate_capture_module", EVALUATE_PATH)
@@ -17,6 +19,21 @@ evaluate_capture_module = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(evaluate_capture_module)
 gold_for_fixture = evaluate_capture_module.gold_for_fixture
+
+
+def git(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def init_git_repo(root: Path) -> None:
+    git(root, "init", "-q")
+    git(root, "config", "user.email", "test@example.com")
+    git(root, "config", "user.name", "Test Reviewer")
 
 
 class ReviewReadinessTests(unittest.TestCase):
@@ -86,17 +103,44 @@ class ReviewReadinessTests(unittest.TestCase):
         self.assertTrue(all(item["epistemic_status"] == "CONTESTED" for item in post))
         self.assertTrue(all(item["resolution_status"] == "CONTESTED" for item in post))
 
-    def test_review_snapshot_is_hash_bound(self):
+    def test_review_snapshot_is_bound_to_commit_tree_not_working_tree(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            init_git_repo(root)
             (root / "a.txt").write_text("alpha", encoding="utf-8")
-            snapshot = build_snapshot(root, "deadbeef", ["a.txt"])
-            self.assertEqual(snapshot["reviewed_commit"], "deadbeef")
-            self.assertEqual(len(snapshot["artifacts"][0]["sha256"]), 64)
-            before = snapshot["artifacts"][0]["sha256"]
+            git(root, "add", "a.txt")
+            git(root, "commit", "-q", "-m", "review baseline")
+            reviewed_commit = git(root, "rev-parse", "HEAD")
+            expected_hash = hashlib.sha256(b"alpha").hexdigest()
+
+            first = build_snapshot(root, reviewed_commit, ["a.txt"])
+            self.assertEqual(first["reviewed_commit"], reviewed_commit)
+            self.assertEqual(first["artifacts"][0]["sha256"], expected_hash)
+            self.assertEqual(len(first["reviewed_tree"]), 40)
+            self.assertEqual(len(first["artifacts"][0]["git_blob_sha"]), 40)
+            self.assertEqual(len(first["snapshot_sha256"]), 64)
+
             (root / "a.txt").write_text("beta", encoding="utf-8")
-            after = build_snapshot(root, "deadbeef", ["a.txt"])["artifacts"][0]["sha256"]
-            self.assertNotEqual(before, after)
+            second = build_snapshot(root, reviewed_commit, ["a.txt"])
+            self.assertEqual(second, first)
+
+    def test_review_snapshot_rejects_nonexistent_commit_shaped_string(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            init_git_repo(root)
+            with self.assertRaises(SnapshotError):
+                build_snapshot(root, "a" * 40, ["a.txt"])
+
+    def test_review_snapshot_rejects_path_escape(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            init_git_repo(root)
+            (root / "a.txt").write_text("alpha", encoding="utf-8")
+            git(root, "add", "a.txt")
+            git(root, "commit", "-q", "-m", "review baseline")
+            reviewed_commit = git(root, "rev-parse", "HEAD")
+            with self.assertRaises(SnapshotError):
+                build_snapshot(root, reviewed_commit, ["../a.txt"])
 
 
 if __name__ == "__main__":
