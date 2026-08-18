@@ -46,7 +46,7 @@
   },
   "post_clarification_items_by_fixture": {
     "F5-E-2": [
-      {"item_id":"f5_caution","entity":"competitor_mentions","kind":"caution","value":"CLIENT_SENSITIVITY_NOT_BLANKET_BAN","scope":"client-facing material","condition":null,"origin":"user","authority":"user","temporal_validity":null,"epistemic_status":"CAUTION","resolution_status":"UNRESOLVED","lifecycle_status":"ACTIVE","rationale":"clarification explicitly rules out a blanket ban while preserving the sensitivity as unresolved caution; no ask-before-strong-comparison rule is established for this fixture","source_refs":["fixture:user","fixture:clarification"]}
+      {"item_id":"f5_caution","entity":"competitor_mentions","kind":"caution","value":"CLIENT_SENSITIVITY","scope":"client-facing material","condition":null,"origin":"user","authority":"user","temporal_validity":null,"epistemic_status":"CAUTION","resolution_status":"UNRESOLVED","lifecycle_status":"ACTIVE","rationale":"the sensitivity remains unresolved caution; the clarification separately and explicitly rules out a blanket ban and establishes no ask-before-strong-comparison rule for this fixture","source_refs":["fixture:user","fixture:clarification"]}
     ]
   }
 }
