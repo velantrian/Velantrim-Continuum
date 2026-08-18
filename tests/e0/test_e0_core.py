@@ -7,8 +7,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "e0"))
 
 from e0_core import (
+    MEASUREMENT_LAW_VERSION,
     clarification_allowed,
     evaluate_capture,
+    norm,
     require_human_reference,
     t4_eligibility,
     validate_manifest,
@@ -60,10 +62,78 @@ class EvaluatorTests(unittest.TestCase):
         actual["rationale"] = None
         self.assertEqual(self.outcome(gold, actual), "PARTIAL")
 
-    def test_misattributed(self):
+    def test_misattributed_entity_when_other_semantic_anchors_remain_compatible(self):
+        actual = dict(GOLD)
+        actual["entity"] = "other_release_artifact"
+        self.assertEqual(self.outcome(GOLD, actual), "MISATTRIBUTED")
+
+    def test_exact_id_does_not_override_origin_conflict(self):
         actual = dict(GOLD)
         actual["origin"] = "assistant"
-        self.assertEqual(self.outcome(GOLD, actual), "MISATTRIBUTED")
+        result = evaluate_capture([GOLD], self.state(actual))
+        self.assertEqual(result["item_results"][0]["primary_outcome"], "MISSED")
+        self.assertEqual(result["fabrications"], [{"actual_item_id": "g1", "primary_outcome": "FABRICATED"}])
+
+    def test_exact_id_does_not_override_authority_conflict(self):
+        actual = dict(GOLD)
+        actual["authority"] = "assistant"
+        result = evaluate_capture([GOLD], self.state(actual))
+        self.assertEqual(result["item_results"][0]["primary_outcome"], "MISSED")
+        self.assertEqual(len(result["fabrications"]), 1)
+
+    def test_exact_id_does_not_override_symbolic_value_conflict(self):
+        gold = dict(GOLD)
+        gold["value"] = "APPROVED"
+        actual = dict(gold)
+        actual["value"] = "PENDING"
+        result = evaluate_capture([gold], self.state(actual))
+        self.assertEqual(result["item_results"][0]["primary_outcome"], "MISSED")
+        self.assertEqual(len(result["fabrications"]), 1)
+
+    def test_same_kind_alone_is_not_sufficient_for_association(self):
+        actual = dict(GOLD)
+        actual.update({
+            "item_id": "x",
+            "entity": "different_entity",
+            "scope": "different_scope",
+            "condition": "different_condition",
+            "origin": None,
+            "authority": None,
+        })
+        result = evaluate_capture([GOLD], self.state(actual))
+        self.assertEqual(result["item_results"][0]["primary_outcome"], "MISSED")
+        self.assertEqual(result["fabrications"][0]["actual_item_id"], "x")
+
+    def test_equal_best_score_is_ambiguous_not_index_tiebroken(self):
+        first = dict(GOLD)
+        first["item_id"] = "a"
+        second = dict(GOLD)
+        second["item_id"] = "b"
+        state = {"schema_version": "0.1", "items": [first, second]}
+        result = evaluate_capture([GOLD], state)
+        self.assertEqual(result["item_results"][0]["primary_outcome"], "MISSED")
+        self.assertEqual({item["actual_item_id"] for item in result["fabrications"]}, {"a", "b"})
+
+    def test_unicode_normalization_preserves_non_ascii_semantic_anchor(self):
+        self.assertEqual(norm("Клиент — чувствительность"), "клиент чувствительность")
+        gold = dict(GOLD)
+        gold.update({"item_id": "unicode-gold", "entity": "клиент", "scope": None, "condition": None})
+        actual = dict(gold)
+        actual["item_id"] = "unicode-actual"
+        result = evaluate_capture([gold], self.state(actual))
+        self.assertEqual(result["item_results"][0]["primary_outcome"], "EXACT")
+        self.assertEqual(result["item_results"][0]["actual_item_id"], "unicode-actual")
+
+    def test_fixture_match_spec_is_validated_and_reported(self):
+        result = evaluate_capture(
+            [GOLD],
+            self.state(dict(GOLD)),
+            match_spec={"strategy": "deterministic_semantic_fields"},
+        )
+        self.assertEqual(result["measurement_law_version"], MEASUREMENT_LAW_VERSION)
+        self.assertEqual(result["match_strategy"], "deterministic_semantic_fields")
+        with self.assertRaisesRegex(ValueError, "unsupported match_spec.strategy"):
+            evaluate_capture([GOLD], self.state(dict(GOLD)), match_spec={"strategy": "unused_strategy"})
 
     def test_temporally_wrong(self):
         gold = dict(GOLD)
