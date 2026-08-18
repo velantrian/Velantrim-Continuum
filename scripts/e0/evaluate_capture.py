@@ -23,6 +23,11 @@ def gold_for_fixture(reference: dict, fixture: dict, clarification_stage: str) -
     require_human_reference(reference)
     family = fixture["family"]
     if clarification_stage == "post":
+        fixture_id = fixture.get("fixture_id")
+        if fixture_id:
+            fixture_specific = reference.get("post_clarification_items_by_fixture", {}).get(fixture_id)
+            if fixture_specific is not None:
+                return fixture_specific
         post = reference.get("post_clarification_items_by_family", {}).get(family)
         if post is not None:
             return post
