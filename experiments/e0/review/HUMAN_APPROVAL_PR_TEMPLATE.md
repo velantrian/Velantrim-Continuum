@@ -7,12 +7,36 @@ Use this only after the human reviewer has independently inspected the exact Iss
 - **Issue:** Closes #9
 - **Review status:** `HUMAN_APPROVED`
 - **Review scope:** Gold / Oracle approval for future `PILOT — NOT EVIDENCE` only
-- **Reviewed repository commit:** `<40-character SHA>`
+- **Reviewed repository commit:** `<full 40-character lowercase commit SHA>`
+- **Reviewed Git tree:** `<40-character tree SHA from review snapshot>`
+- **Review snapshot SHA-256:** `<64-character SHA-256 from review snapshot v0.2>`
 - **Reviewed at (UTC):** `<YYYY-MM-DDTHH:MM:SSZ>`
 - **Human reviewer:** `<name>`
 - **Reviewer role / authority:** `<role>`
 
-The reviewer should state that they independently reviewed the exact candidate artifacts and fixture/scenario semantics and approve only the versioned artifacts and exact SHA-256 bindings in the PR.
+The reviewer should state that they independently reviewed the exact candidate artifacts and fixture/scenario semantics represented by the review snapshot and approve only the versioned artifacts and exact bindings in the PR.
+
+## Exact reviewed-byte binding
+
+Generate the review packet from the **Git tree of the exact commit being reviewed**, not from the current working tree:
+
+```text
+python scripts/e0/review_snapshot.py \
+  --repo-root . \
+  --reviewed-commit <full-40-character-commit-SHA> \
+  --output /path/outside/repo/issue-9-review-snapshot.json
+```
+
+Snapshot v0.2 binds:
+
+- the exact existing Git commit;
+- that commit's tree SHA;
+- the exact protocol-defined review-input paths;
+- each reviewed Git blob SHA;
+- each reviewed artifact SHA-256;
+- a canonical `snapshot_sha256` over the snapshot contents.
+
+A dirty or subsequently modified working tree must not change a snapshot for an already selected reviewed commit.
 
 ## Required human decisions
 
@@ -46,24 +70,38 @@ Approved files must be versioned copies outside `candidates/`:
 - `experiments/e0/gold/approved/capture-gold.v0.1.json`
 - `experiments/e0/oracle/approved/transfer-oracle.v0.1.json`
 
-Historical candidate inputs must remain `AI_PROPOSED_DRAFT`.
+Historical candidate inputs must remain `AI_PROPOSED_DRAFT` and must still match the exact candidate bytes present in the reviewed commit snapshot.
 
 Approval provenance record:
 
-`experiments/e0/approval/human-reference-approval.v0.1.json`
+`experiments/e0/approval/human-reference-approval.v0.2.json`
 
-The record must bind exact candidate and approved SHA-256 values and include the reviewed commit, canonical Issue #9 URL, reviewer identity/role, timestamp, all 14 human decisions, and:
+The record must use:
+
+`approval_format = velantrim-continuum:e0-human-reference-approval:v0.2`
+
+and bind at least:
 
 ```json
-"evidence_lock": {"status": "NOT_CREATED", "sha256": null}
+{
+  "reviewed_repository_commit": "<commit SHA>",
+  "review_snapshot": {
+    "snapshot_version": "0.2",
+    "snapshot_sha256": "<snapshot SHA-256>",
+    "reviewed_tree": "<tree SHA>"
+  },
+  "evidence_lock": {"status": "NOT_CREATED", "sha256": null}
+}
 ```
+
+The record must also include the canonical Issue #9 URL, reviewer identity/role, timestamp, all 14 human decisions, and exact candidate/approved artifact hashes and versions.
 
 ## Verification
 
 ```text
 python scripts/e0/validate_human_reference_approval.py \
   --repo-root . \
-  --approval experiments/e0/approval/human-reference-approval.v0.1.json \
+  --approval experiments/e0/approval/human-reference-approval.v0.2.json \
   --issue-number 9
 ```
 
@@ -71,7 +109,9 @@ Expected machine result after a legitimate approval PR has materialized all requ
 
 `HUMAN_REFERENCE_APPROVAL_BINDINGS_VALID`
 
-Important: this machine result validates attestation structure and exact repository bindings that the validator actually checks. It **does not prove that a human actually performed or understood the review**; the human act remains an external governance fact that must be explicitly recorded by the reviewer.
+The validator must independently re-read the exact reviewed commit/tree bytes and recompute the review snapshot. A commit-shaped string, a current-filesystem hash, or a supplied snapshot hash by itself is insufficient.
+
+Important: this machine result validates repository bindings that the validator actually checks. It **does not prove that a human actually performed or understood the review**; the human act remains an external governance fact that must be explicitly recorded by the reviewer.
 
 ## Boundary
 
