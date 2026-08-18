@@ -23,6 +23,12 @@ class ReviewReadinessTests(unittest.TestCase):
     def load(self, relative):
         return json.loads((ROOT / relative).read_text(encoding="utf-8"))
 
+    def approved_candidate(self):
+        gold = self.load("experiments/e0/gold/candidates/capture-gold.ai-proposed.json")
+        approved = dict(gold)
+        approved["authorship_status"] = "HUMAN_APPROVED"
+        return approved
+
     def test_candidates_remain_non_authoritative(self):
         for relative in (
             "experiments/e0/gold/candidates/capture-gold.ai-proposed.json",
@@ -34,10 +40,7 @@ class ReviewReadinessTests(unittest.TestCase):
                 require_human_reference(candidate)
 
     def test_pre_post_clarification_are_separate(self):
-        gold = self.load("experiments/e0/gold/candidates/capture-gold.ai-proposed.json")
-        # Exercise selection logic only; copy is explicitly human-approved in-memory for unit testing.
-        approved = dict(gold)
-        approved["authorship_status"] = "HUMAN_APPROVED"
+        approved = self.approved_candidate()
         fixture_set = self.load("experiments/e0/fixtures/capture/pilot/fixtures.json")
         fixture = next(item for item in fixture_set["fixtures"] if item["family"] == "F2")
         pre = gold_for_fixture(approved, fixture, "pre")
@@ -45,6 +48,34 @@ class ReviewReadinessTests(unittest.TestCase):
         self.assertNotEqual(pre[0]["condition"], post[0]["condition"])
         self.assertNotIn("substantive", pre[0]["condition"].lower())
         self.assertIn("substantive", post[0]["condition"].lower())
+
+    def test_f5_e1_post_keeps_confirmation_rule(self):
+        approved = self.approved_candidate()
+        fixture_set = self.load("experiments/e0/fixtures/capture/evidence/fixtures.json")
+        fixture = next(item for item in fixture_set["fixtures"] if item["fixture_id"] == "F5-E-1")
+        post = gold_for_fixture(approved, fixture, "post")
+        self.assertEqual({item["item_id"] for item in post}, {"f5_caution", "f5_confirmation_rule"})
+        confirmation = next(item for item in post if item["item_id"] == "f5_confirmation_rule")
+        self.assertEqual(confirmation["value"], "ASK_BEFORE_STRONG_COMPARISON")
+
+    def test_f5_e2_post_preserves_unresolved_caution_without_e1_rule(self):
+        approved = self.approved_candidate()
+        fixture_set = self.load("experiments/e0/fixtures/capture/evidence/fixtures.json")
+        fixture = next(item for item in fixture_set["fixtures"] if item["fixture_id"] == "F5-E-2")
+        post = gold_for_fixture(approved, fixture, "post")
+        self.assertEqual([item["item_id"] for item in post], ["f5_caution"])
+        caution = post[0]
+        self.assertEqual(caution["value"], "CLIENT_SENSITIVITY_NOT_BLANKET_BAN")
+        self.assertEqual(caution["epistemic_status"], "CAUTION")
+        self.assertEqual(caution["resolution_status"], "UNRESOLVED")
+        self.assertNotIn("ASK_BEFORE_STRONG_COMPARISON", json.dumps(post))
+
+    def test_f5_pilot_post_still_uses_family_default(self):
+        approved = self.approved_candidate()
+        fixture_set = self.load("experiments/e0/fixtures/capture/pilot/fixtures.json")
+        fixture = next(item for item in fixture_set["fixtures"] if item["fixture_id"] == "F5-P-A")
+        post = gold_for_fixture(approved, fixture, "post")
+        self.assertEqual({item["item_id"] for item in post}, {"f5_caution", "f5_confirmation_rule"})
 
     def test_f8_remains_contested_after_clarification(self):
         gold = self.load("experiments/e0/gold/candidates/capture-gold.ai-proposed.json")
