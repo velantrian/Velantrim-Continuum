@@ -11,8 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "e0"))
 
-from review_snapshot import REVIEW_PATHS if False else DEFAULT_PATHS
-from review_snapshot import build_snapshot
+from review_snapshot import DEFAULT_PATHS, build_snapshot
 from validate_human_reference_approval import APPROVAL_FORMAT, EXPECTED_DECISIONS, ValidationError, validate
 
 
