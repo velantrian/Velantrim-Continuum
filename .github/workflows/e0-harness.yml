@@ -17,6 +17,8 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Install Experiment 0 validation dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-e0.txt
       - name: Compile Experiment 0 scripts
         run: python -m compileall -q scripts/e0
       - name: Validate Experiment 0 contracts

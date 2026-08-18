@@ -4,11 +4,64 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError
+
 ROOT = Path(__file__).resolve().parents[2]
+SCHEMA_DIR = ROOT / "experiments/e0/schema"
+SCHEMA_INSTANCE_BINDINGS = {
+    "capture-fixture.schema.json": (
+        "experiments/e0/fixtures/capture/pilot/fixtures.json",
+        "experiments/e0/fixtures/capture/evidence/fixtures.json",
+    ),
+}
 
 
 def load(relative: str) -> dict:
     return json.loads((ROOT / relative).read_text(encoding="utf-8"))
+
+
+def render_json_path(parts) -> str:
+    path = "$"
+    for part in parts:
+        if isinstance(part, int):
+            path += f"[{part}]"
+        else:
+            path += f".{part}"
+    return path
+
+
+def validate_json_schemas() -> list[str]:
+    errors: list[str] = []
+    schemas: dict[str, dict] = {}
+    for path in sorted(SCHEMA_DIR.glob("*.json")):
+        try:
+            schema = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            errors.append(f"{path.relative_to(ROOT)}: invalid JSON: {exc}")
+            continue
+        try:
+            Draft202012Validator.check_schema(schema)
+        except SchemaError as exc:
+            errors.append(f"{path.relative_to(ROOT)}: invalid Draft 2020-12 schema: {exc.message}")
+            continue
+        schemas[path.name] = schema
+
+    for schema_name, instances in SCHEMA_INSTANCE_BINDINGS.items():
+        schema = schemas.get(schema_name)
+        if schema is None:
+            errors.append(f"missing or invalid schema required for instance validation: {schema_name}")
+            continue
+        validator = Draft202012Validator(schema)
+        for relative in instances:
+            try:
+                instance = load(relative)
+            except (FileNotFoundError, json.JSONDecodeError) as exc:
+                errors.append(f"{relative}: cannot load schema-bound instance: {exc}")
+                continue
+            for error in sorted(validator.iter_errors(instance), key=lambda item: list(item.absolute_path)):
+                errors.append(f"{relative} {render_json_path(error.absolute_path)}: schema violation: {error.message}")
+    return errors
 
 
 def validate_fixture_set(relative: str, expected_partition: str, candidate_gold: dict) -> list[str]:
@@ -43,12 +96,7 @@ def validate_fixture_set(relative: str, expected_partition: str, candidate_gold:
 
 def main() -> int:
     errors: list[str] = []
-    schema_dir = ROOT / "experiments/e0/schema"
-    for path in schema_dir.glob("*.json"):
-        try:
-            json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            errors.append(f"{path}: invalid JSON: {exc}")
+    errors += validate_json_schemas()
 
     candidate_gold = load("experiments/e0/gold/candidates/capture-gold.ai-proposed.json")
     candidate_oracle = load("experiments/e0/oracle/candidates/transfer-oracle.ai-proposed.json")
@@ -77,7 +125,7 @@ def main() -> int:
         for error in errors:
             print(f"ERROR: {error}")
         return 1
-    print("Experiment 0 contracts: VALID")
+    print("Experiment 0 contracts: VALID (Draft 2020-12 schema + research invariants)")
     return 0
 
 

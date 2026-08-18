@@ -38,6 +38,9 @@ jobs:
           python-version: "3.11"
           check-latest: false
 
+      - name: Install Experiment 0 validation dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-e0.txt
+
       - name: Validate approval against reviewed commit tree and exact SHA-256 bindings
         run: |
           python scripts/e0/validate_human_reference_approval.py \
