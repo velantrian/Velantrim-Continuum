@@ -9,12 +9,12 @@ Use this only after the human reviewer has independently inspected the exact Iss
 - **Review scope:** Gold / Oracle approval for future `PILOT — NOT EVIDENCE` only
 - **Reviewed repository commit:** `<full 40-character lowercase commit SHA>`
 - **Reviewed Git tree:** `<40-character tree SHA from review snapshot>`
-- **Review snapshot SHA-256:** `<64-character SHA-256 from review snapshot v0.2>`
+- **Review snapshot SHA-256:** `<64-character SHA-256 from review snapshot v0.3>`
 - **Reviewed at (UTC):** `<YYYY-MM-DDTHH:MM:SSZ>`
 - **Human reviewer:** `<name>`
 - **Reviewer role / authority:** `<role>`
 
-The reviewer should state that they independently reviewed the exact candidate artifacts and fixture/scenario semantics represented by the review snapshot and approve only the versioned artifacts and exact bindings in the PR.
+The reviewer should state that they independently reviewed the exact candidate artifacts, fixture/scenario semantics, preregistration, and the bound 14-row review protocol represented by the snapshot, and approve only the versioned artifacts and exact bindings in the PR.
 
 ## Exact reviewed-byte binding
 
@@ -27,16 +27,16 @@ python scripts/e0/review_snapshot.py \
   --output /path/outside/repo/issue-9-review-snapshot.json
 ```
 
-Snapshot v0.2 binds:
+Snapshot v0.3 binds:
 
 - the exact existing Git commit;
 - that commit's tree SHA;
-- the exact protocol-defined review-input paths;
+- the seven protocol-defined review/control paths, including `ISSUE_9_HUMAN_REVIEW_PROTOCOL.md` itself;
 - each reviewed Git blob SHA;
 - each reviewed artifact SHA-256;
 - a canonical `snapshot_sha256` over the snapshot contents.
 
-A dirty or subsequently modified working tree must not change a snapshot for an already selected reviewed commit.
+A dirty or subsequently modified working tree must not change a snapshot for an already selected reviewed commit. Any change to a bound path, including the review protocol itself, invalidates the old snapshot for a new approval PR head.
 
 ## Required human decisions
 
@@ -86,7 +86,7 @@ and bind at least:
 {
   "reviewed_repository_commit": "<commit SHA>",
   "review_snapshot": {
-    "snapshot_version": "0.2",
+    "snapshot_version": "0.3",
     "snapshot_sha256": "<snapshot SHA-256>",
     "reviewed_tree": "<tree SHA>"
   },
