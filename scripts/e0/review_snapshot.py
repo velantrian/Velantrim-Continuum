@@ -9,9 +9,10 @@ import subprocess
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
-SNAPSHOT_VERSION = "0.2"
+SNAPSHOT_VERSION = "0.3"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 DEFAULT_PATHS = [
+    "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md",
     "docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md",
     "experiments/e0/fixtures/capture/pilot/fixtures.json",
     "experiments/e0/fixtures/capture/evidence/fixtures.json",

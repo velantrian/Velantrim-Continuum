@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "e0"))
 
-from review_snapshot import DEFAULT_PATHS, build_snapshot
+from review_snapshot import DEFAULT_PATHS, SNAPSHOT_VERSION, build_snapshot
 from validate_human_reference_approval import APPROVAL_FORMAT, EXPECTED_DECISIONS, ValidationError, validate
 
 
@@ -43,6 +43,7 @@ def init_git_repo(root: Path) -> None:
 
 class ApprovalValidatorTests(unittest.TestCase):
     def create_review_inputs(self, root: Path, *, capture_status: str = "AI_PROPOSED_DRAFT") -> tuple[str, str, str, str]:
+        write_text(root, "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md", "14-row protocol baseline\n")
         write_text(root, "docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md", "prereg baseline\n")
         write_json(root, "experiments/e0/fixtures/capture/pilot/fixtures.json", {"partition": "PILOT", "fixtures": []})
         write_json(root, "experiments/e0/fixtures/capture/evidence/fixtures.json", {"partition": "EVIDENCE", "fixtures": []})
@@ -113,6 +114,11 @@ class ApprovalValidatorTests(unittest.TestCase):
             },
         }
 
+    def test_snapshot_scope_binds_review_protocol(self) -> None:
+        self.assertEqual(SNAPSHOT_VERSION, "0.3")
+        self.assertEqual(len(DEFAULT_PATHS), 7)
+        self.assertIn("experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md", DEFAULT_PATHS)
+
     def test_canonical_human_decision_ids_are_exactly_fourteen(self) -> None:
         self.assertEqual(len(EXPECTED_DECISIONS), 14)
         self.assertIn("F5_PRE", EXPECTED_DECISIONS)
@@ -171,6 +177,15 @@ class ApprovalValidatorTests(unittest.TestCase):
             approval = self.build_valid_case(root)
             prereg = root / "docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md"
             prereg.write_text("prereg changed after review\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValidationError, "current review input differs from reviewed-commit bytes"):
+                validate(approval, root, 9)
+
+    def test_review_protocol_drift_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            approval = self.build_valid_case(root)
+            protocol = root / "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md"
+            protocol.write_text("changed decision rows after review\n", encoding="utf-8")
             with self.assertRaisesRegex(ValidationError, "current review input differs from reviewed-commit bytes"):
                 validate(approval, root, 9)
 
