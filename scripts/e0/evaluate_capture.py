@@ -52,7 +52,12 @@ def main() -> int:
     gold = load(args.gold)
     captured = load(args.captured_state)
     reference_items = gold_for_fixture(gold, fixture, args.clarification_stage)
-    result = evaluate_capture(reference_items, captured, fixture.get("hard_fail_bindings", []))
+    result = evaluate_capture(
+        reference_items,
+        captured,
+        fixture.get("hard_fail_bindings", []),
+        fixture.get("match_spec"),
+    )
     result["fixture_id"] = args.fixture_id
     result["clarification_stage"] = args.clarification_stage
     Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

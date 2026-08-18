@@ -3,11 +3,16 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
 UNCERTAIN = {"CAUTION", "UNRESOLVED", "CONTESTED"}
 STATUS_FIELDS = {"scope", "condition", "epistemic_status", "resolution_status", "lifecycle_status"}
+MEASUREMENT_LAW_VERSION = "e0-correspondence-v0.2"
+MATCH_STRATEGY = "deterministic_semantic_fields"
+MIN_MATCH_SCORE = 5
+SYMBOLIC_VALUE_RE = re.compile(r"^[A-Z0-9_€.-]+$")
 
 
 def canonical_json(value: Any) -> bytes:
@@ -29,7 +34,9 @@ def sha256_file(path: str | Path) -> str:
 def norm(value: Any) -> str:
     if value is None:
         return ""
-    return " ".join(re.findall(r"[a-z0-9€]+", str(value).lower()))
+    text = unicodedata.normalize("NFKC", str(value).casefold())
+    normalized = "".join(character if character.isalnum() or character == "€" else " " for character in text)
+    return " ".join(normalized.split())
 
 
 def token_overlap(left: Any, right: Any) -> int:
@@ -59,38 +66,92 @@ def validate_state(state: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _present(value: Any) -> bool:
+    return value not in (None, "")
+
+
+def _different_when_both_present(left: Any, right: Any) -> bool:
+    return _present(left) and _present(right) and norm(left) != norm(right)
+
+
+def _symbolic_value_conflict(left: Any, right: Any) -> bool:
+    if not (_present(left) and _present(right)):
+        return False
+    left_text = str(left)
+    right_text = str(right)
+    if not (SYMBOLIC_VALUE_RE.fullmatch(left_text) and SYMBOLIC_VALUE_RE.fullmatch(right_text)):
+        return False
+    return left_text != right_text
+
+
+def association_compatible(gold: dict[str, Any], actual: dict[str, Any]) -> bool:
+    if gold.get("kind") != actual.get("kind"):
+        return False
+    if _different_when_both_present(gold.get("origin"), actual.get("origin")):
+        return False
+    if _different_when_both_present(gold.get("authority"), actual.get("authority")):
+        return False
+    if _symbolic_value_conflict(gold.get("value"), actual.get("value")):
+        return False
+    semantic_anchor = any(
+        token_overlap(gold.get(field), actual.get(field)) > 0
+        for field in ("entity", "value", "scope", "condition")
+    )
+    return semantic_anchor
+
+
 def match_score(gold: dict[str, Any], actual: dict[str, Any]) -> int:
-    score = 0
-    if gold.get("kind") == actual.get("kind"):
-        score += 4
-    if gold.get("origin") and gold.get("origin") == actual.get("origin"):
+    if not association_compatible(gold, actual):
+        return -1
+    score = 4  # same kind is necessary but never sufficient by itself.
+    if gold.get("item_id") == actual.get("item_id"):
+        score += 3
+    if gold.get("origin") and norm(gold.get("origin")) == norm(actual.get("origin")):
         score += 2
-    if gold.get("authority") and gold.get("authority") == actual.get("authority"):
-        score += 1
+    if gold.get("authority") and norm(gold.get("authority")) == norm(actual.get("authority")):
+        score += 2
     if gold.get("lifecycle_status") == actual.get("lifecycle_status"):
         score += 1
     score += min(token_overlap(gold.get("value"), actual.get("value")), 3)
     score += min(token_overlap(gold.get("entity"), actual.get("entity")), 2)
     score += min(token_overlap(gold.get("scope"), actual.get("scope")), 2)
+    score += min(token_overlap(gold.get("condition"), actual.get("condition")), 2)
     return score
+
+
+def validate_match_spec(match_spec: dict[str, Any] | None) -> str:
+    if match_spec is None:
+        return MATCH_STRATEGY
+    if not isinstance(match_spec, dict):
+        raise ValueError("match_spec must be an object")
+    if set(match_spec) != {"strategy"}:
+        raise ValueError("match_spec must contain exactly strategy")
+    strategy = match_spec.get("strategy")
+    if strategy != MATCH_STRATEGY:
+        raise ValueError(f"unsupported match_spec.strategy: {strategy!r}")
+    return strategy
 
 
 def match_items(gold_items: list[dict[str, Any]], actual_items: list[dict[str, Any]]) -> tuple[dict[int, int], list[int]]:
     matches: dict[int, int] = {}
     remaining = set(range(len(actual_items)))
     for gold_index, gold in enumerate(gold_items):
-        exact = [index for index in remaining if actual_items[index].get("item_id") == gold.get("item_id")]
-        if exact:
-            actual_index = exact[0]
-            matches[gold_index] = actual_index
-            remaining.remove(actual_index)
+        ranked = [
+            (match_score(gold, actual_items[index]), index)
+            for index in sorted(remaining)
+            if association_compatible(gold, actual_items[index])
+        ]
+        ranked = [(score, index) for score, index in ranked if score >= MIN_MATCH_SCORE]
+        if not ranked:
             continue
-        ranked = sorted(((match_score(gold, actual_items[index]), index) for index in remaining), reverse=True)
-        # Fixed deterministic association rule. This is not an architecture acceptance threshold.
-        if ranked and ranked[0][0] >= 4:
-            _, actual_index = ranked[0]
-            matches[gold_index] = actual_index
-            remaining.remove(actual_index)
+        best_score = max(score for score, _ in ranked)
+        best = [index for score, index in ranked if score == best_score]
+        # Ambiguity is not silently broken by list position or item_id. No unique best => no association.
+        if len(best) != 1:
+            continue
+        actual_index = best[0]
+        matches[gold_index] = actual_index
+        remaining.remove(actual_index)
     return matches, sorted(remaining)
 
 
@@ -124,10 +185,16 @@ def classify_matched(gold: dict[str, Any], actual: dict[str, Any], atoms: list[d
     return "EXACT"
 
 
-def evaluate_capture(gold_items: list[dict[str, Any]], actual_state: dict[str, Any], hard_fail_bindings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def evaluate_capture(
+    gold_items: list[dict[str, Any]],
+    actual_state: dict[str, Any],
+    hard_fail_bindings: list[dict[str, Any]] | None = None,
+    match_spec: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     errors = validate_state(actual_state)
     if errors:
         raise ValueError("; ".join(errors))
+    strategy = validate_match_spec(match_spec)
     actual_items = actual_state["items"]
     matches, extras = match_items(gold_items, actual_items)
     item_results: list[dict[str, Any]] = []
@@ -168,7 +235,14 @@ def evaluate_capture(gold_items: list[dict[str, Any]], actual_state: dict[str, A
             evidence = "bound contested state promoted/collapsed" if triggered else None
         hard_fails.append({"class": hard_fail_class, "binding_id": f"binding-{index + 1}", "triggered": triggered, "evidence": evidence})
 
-    return {"evaluation_version": "0.1", "item_results": item_results, "fabrications": fabrications, "hard_fails": hard_fails}
+    return {
+        "evaluation_version": "0.1",
+        "measurement_law_version": MEASUREMENT_LAW_VERSION,
+        "match_strategy": strategy,
+        "item_results": item_results,
+        "fabrications": fabrications,
+        "hard_fails": hard_fails,
+    }
 
 
 def require_human_reference(reference: dict[str, Any]) -> None:
