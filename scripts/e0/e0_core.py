@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 import unicodedata
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 UNCERTAIN = {"CAUTION", "UNRESOLVED", "CONTESTED"}
@@ -323,6 +323,23 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _resolve_locked_artifact(repo_root: Path, value: Any) -> tuple[str, Path] | tuple[None, None]:
+    if not isinstance(value, str) or not value or "\x00" in value or "\\" in value:
+        return None, None
+    pure = PurePosixPath(value)
+    normalized = pure.as_posix()
+    if pure.is_absolute() or normalized != value or normalized in {"", "."} or ".." in pure.parts or "." in pure.parts:
+        return None, None
+    root = repo_root.resolve()
+    candidate = root / normalized
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        return None, None
+    return normalized, resolved
+
+
 def verify_lock(lock: dict[str, Any], repo_root: str | Path) -> list[str]:
     errors: list[str] = []
     if lock.get("status") != "EVIDENCE_READY":
@@ -330,14 +347,22 @@ def verify_lock(lock: dict[str, Any], repo_root: str | Path) -> list[str]:
     approval = lock.get("human_gold_approval", {})
     if approval.get("status") != "HUMAN_APPROVED":
         errors.append("human Gold/Oracle approval missing")
-    root = Path(repo_root)
+    root = Path(repo_root).resolve()
+    seen: set[str] = set()
     for entry in lock.get("artifacts", []):
-        relative_path = entry.get("path", "")
-        path = root / relative_path
+        relative_path = entry.get("path", "") if isinstance(entry, dict) else ""
+        normalized, path = _resolve_locked_artifact(root, relative_path)
+        if normalized is None or path is None:
+            errors.append(f"invalid locked artifact path: {relative_path}")
+            continue
+        if normalized in seen:
+            errors.append(f"duplicate locked artifact path: {normalized}")
+            continue
+        seen.add(normalized)
         if not path.is_file():
-            errors.append(f"missing locked artifact: {relative_path}")
+            errors.append(f"missing locked artifact: {normalized}")
             continue
         actual = sha256_file(path)
         if actual != entry.get("sha256"):
-            errors.append(f"hash mismatch: {relative_path}")
+            errors.append(f"hash mismatch: {normalized}")
     return errors
