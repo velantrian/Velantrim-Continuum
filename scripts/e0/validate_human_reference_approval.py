@@ -159,6 +159,18 @@ def validate_review_binding(approval: dict[str, Any], repo_root: Path, reviewed_
     return {item["path"]: item["sha256"] for item in snapshot["artifacts"]}
 
 
+def validate_current_review_inputs(repo_root: Path, reviewed_artifacts: dict[str, str]) -> None:
+    if set(reviewed_artifacts) != set(REVIEW_PATHS):
+        raise ValidationError("recomputed review snapshot scope differs from the canonical review-input manifest")
+    root = repo_root.resolve()
+    for relative in REVIEW_PATHS:
+        current = (root / relative).resolve()
+        if root not in current.parents or not current.is_file():
+            raise ValidationError(f"current review input is missing or outside repository root: {relative}")
+        if sha256_file(current) != reviewed_artifacts[relative]:
+            raise ValidationError(f"current review input differs from reviewed-commit bytes: {relative}")
+
+
 def validate_reference(repo_root: Path, name: str, value: Any, reviewed_artifacts: dict[str, str]) -> list[str]:
     if not isinstance(value, dict):
         raise ValidationError(f"references.{name} must be an object")
@@ -217,6 +229,7 @@ def validate(approval: dict[str, Any], repo_root: Path, issue_number: int) -> li
 
     reviewed_commit = require_git_sha(approval.get("reviewed_repository_commit"), "reviewed_repository_commit")
     reviewed_artifacts = validate_review_binding(approval, repo_root.resolve(), reviewed_commit)
+    validate_current_review_inputs(repo_root, reviewed_artifacts)
 
     issue_url = require_string(approval.get("issue_url"), "issue_url")
     parsed = urlparse(issue_url)
