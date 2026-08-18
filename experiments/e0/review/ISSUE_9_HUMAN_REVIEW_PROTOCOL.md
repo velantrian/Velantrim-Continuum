@@ -8,10 +8,11 @@ This document is a review packet, not an approval record. It must never be used 
 
 > **Freshness note:** the previous attestation-ready baseline is no longer sufficient after reference/approval-conformance corrections and reviewed-byte binding corrections. A fresh exact reviewed commit and review snapshot are required before human approval.
 
-## Review inputs
+## Review inputs and review-control binding
 
-The exact human-review snapshot scope is these six repository paths:
+The exact human-review snapshot scope is these seven repository paths:
 
+- `experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md`
 - `experiments/e0/fixtures/capture/pilot/fixtures.json`
 - `experiments/e0/fixtures/capture/evidence/fixtures.json`
 - `experiments/e0/fixtures/transfer/scenarios.json`
@@ -19,11 +20,11 @@ The exact human-review snapshot scope is these six repository paths:
 - `experiments/e0/oracle/candidates/transfer-oracle.ai-proposed.json`
 - `docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`
 
-No additional path may silently enter the snapshot scope, and none of these six may silently disappear.
+The protocol itself is bound because the human decision rows and review instructions must not be mutable after the reviewed snapshot is selected. No additional path may silently enter the snapshot scope, and none of these seven may silently disappear.
 
 ## Exact reviewed-commit / reviewed-byte binding
 
-Use snapshot v0.2:
+Use snapshot v0.3:
 
 ```text
 python3 scripts/e0/review_snapshot.py \
@@ -36,14 +37,14 @@ The snapshot must be derived from the **Git tree of the supplied commit**, not f
 
 - an existing exact commit SHA;
 - that commit's exact tree SHA;
-- all six protocol-defined review paths;
+- all seven protocol-defined review/control paths, including this protocol;
 - each path's Git blob SHA;
 - each path's SHA-256 over the blob bytes;
 - one canonical SHA-256 over the snapshot material.
 
 A commit-shaped string is not sufficient. A current-working-tree hash is not sufficient. A supplied snapshot hash without independent recomputation is not sufficient.
 
-If the working tree changes after the reviewed commit is selected, regenerating the snapshot for that same commit must produce the same result.
+If any bound path changes after the reviewed commit is selected — including this protocol — the approval validator must reject the old snapshot against the new approval PR head.
 
 ## Decision vocabulary
 
@@ -114,11 +115,11 @@ Previous AI pre-review findings are historical inputs only. They do not establis
 
 A future `READY_FOR_HUMAN_ATTESTATION` state requires, at minimum:
 
-- the review protocol is frozen for that review;
-- candidate/reference inputs are frozen in an exact Git commit;
+- this review protocol is frozen and included in the reviewed snapshot;
+- candidate/reference inputs are frozen in the same exact Git commit;
 - all 14 canonical rows are enumerated and representation-aligned;
-- snapshot v0.2 is generated from that commit tree for exactly the six review inputs above;
-- the approval validator can independently resolve the commit, recompute its tree/snapshot, and match the candidate bindings;
+- snapshot v0.3 is generated from that commit tree for exactly the seven bound review/control paths above;
+- the approval validator can independently resolve the commit, recompute its tree/snapshot, and reject drift in any of the seven bound paths;
 - machine/human decision namespaces remain separated;
 - no Pilot or Evidence has been run;
 - Evidence Lock remains absent.
@@ -127,10 +128,10 @@ Passing this machine binding check proves only the checked repository relationsh
 
 ## If any item is REVISE or REJECT
 
-1. Change only the relevant candidate/fixture/schema/test artifacts in a bounded correction PR.
+1. Change only the relevant candidate/fixture/schema/test/protocol artifacts in a bounded correction PR.
 2. Keep candidate status `AI_PROPOSED_DRAFT`.
 3. Select a new reviewed commit after the correction is merged/frozen.
-4. Regenerate snapshot v0.2 from that commit tree.
+4. Regenerate snapshot v0.3 from that commit tree.
 5. Re-review all affected rows.
 
 ## Approval record requirements
@@ -145,7 +146,7 @@ and bind:
 - approval timestamp;
 - exact existing reviewed commit SHA;
 - exact reviewed tree SHA;
-- snapshot version `0.2` and canonical snapshot SHA-256;
+- snapshot version `0.3` and canonical snapshot SHA-256;
 - candidate paths and SHA-256 hashes matching the reviewed commit bytes;
 - approved artifact paths and SHA-256 hashes;
 - semantic version;
