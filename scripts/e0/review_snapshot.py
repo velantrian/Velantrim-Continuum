@@ -18,7 +18,6 @@ DEFAULT_PATHS = [
     "experiments/e0/fixtures/transfer/scenarios.json",
     "experiments/e0/gold/candidates/capture-gold.ai-proposed.json",
     "experiments/e0/oracle/candidates/transfer-oracle.ai-proposed.json",
-    "scripts/e0/e0_core.py",
 ]
 
 
