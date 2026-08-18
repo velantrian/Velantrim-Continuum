@@ -13,6 +13,8 @@ Velantrim Continuum исследует простой вопрос с намер
 
 **🤖 AI / Agents / Automated Auditors:** начинай с [`docs/ai/README.md`](docs/ai/README.md), а не пытайся восстанавливать текущую истину из human-facing README.  
 **📚 Подробный human overview:** [`RESEARCH_OVERVIEW.ru.md`](RESEARCH_OVERVIEW.ru.md)  
+**🌍 Практическая значимость и применимость:** [`docs/APPLICABILITY.ru.md`](docs/APPLICABILITY.ru.md)  
+**📐 Архитектура документации:** [`docs/DOCUMENTATION_ARCHITECTURE.md`](docs/DOCUMENTATION_ARCHITECTURE.md)  
 **⚙ Machine-readable current state:** [`project-state.json`](project-state.json)  
 **📊 Текущий статус:** [`STATUS.md`](STATUS.md)
 
@@ -46,6 +48,10 @@ Velantrim Continuum исследует простой вопрос с намер
 - provenance и epistemic status.
 
 Но Continuum специально не предполагает, что для этого нужна большая архитектура. Исследовательская цель — найти **minimum sufficient process state**.
+
+Подробные примеры применения в повседневной жизни, творчестве, науке, software engineering, организациях, high-stakes сферах и multi-agent systems находятся в документе **[«Практическая значимость, области применения и границы применимости»](docs/APPLICABILITY.ru.md)**.
+
+> **Potential applicability ≠ validated applicability ≠ deployment authorization.**
 
 ## 🗺 Mental map
 
@@ -153,6 +159,8 @@ README намеренно остаётся стабильным. Volatile зна
 |---|---|---|
 | 👤 `README.md` / `README.ru.md` | Human landing page и стабильная mental model | Только structural changes |
 | 📚 `RESEARCH_OVERVIEW*.md` | Подробное human conceptual explanation | Structural research changes |
+| 🌍 `docs/APPLICABILITY*.md` | Практическая значимость, применимость и non-deployment boundaries | Structural conceptual changes |
+| 📐 `docs/DOCUMENTATION_ARCHITECTURE.md` | Контракт Human / AI / machine / evidence документации | Documentation-architecture changes |
 | 🤖 `docs/ai/README.md` | Детерминированный AI router и канонические `never infer` rules | AI/documentation contract changes |
 | 🤖 `AGENTS.md` | Repository scope и working contract | Scope / behavior contract changes |
 | ⚙ `project-state.json` | Exact volatile machine-readable state | State changes |
@@ -203,6 +211,8 @@ README.ru.md
    ↓
 RESEARCH_OVERVIEW.ru.md
    ↓
+docs/APPLICABILITY.ru.md    ← зачем проект нужен / где применим
+   ↓
 docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md
    ↓
 future evidence / results
@@ -229,6 +239,8 @@ task-specific protocol / evidence
 ## 📚 Research record
 
 - Canonical preregistration: [`docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`](docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md)
+- Практическая значимость и применимость: [`docs/APPLICABILITY.ru.md`](docs/APPLICABILITY.ru.md)
+- Архитектура документации: [`docs/DOCUMENTATION_ARCHITECTURE.md`](docs/DOCUMENTATION_ARCHITECTURE.md)
 - Research index: [`docs/research/README.md`](docs/research/README.md)
 - Canonical Notion page: **🌎 Velantrim Continuum — IDPS Research 🪎**
 
