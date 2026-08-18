@@ -65,9 +65,11 @@ class ReviewReadinessTests(unittest.TestCase):
         post = gold_for_fixture(approved, fixture, "post")
         self.assertEqual([item["item_id"] for item in post], ["f5_caution"])
         caution = post[0]
-        self.assertEqual(caution["value"], "CLIENT_SENSITIVITY_NOT_BLANKET_BAN")
+        self.assertEqual(caution["value"], "CLIENT_SENSITIVITY")
         self.assertEqual(caution["epistemic_status"], "CAUTION")
         self.assertEqual(caution["resolution_status"], "UNRESOLVED")
+        self.assertEqual(caution["lifecycle_status"], "ACTIVE")
+        self.assertIn("blanket ban", caution["rationale"].lower())
         self.assertNotIn("ASK_BEFORE_STRONG_COMPARISON", json.dumps(post))
 
     def test_f5_pilot_post_still_uses_family_default(self):
