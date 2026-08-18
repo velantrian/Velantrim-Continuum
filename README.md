@@ -13,6 +13,8 @@ The project does **not** assume that a complex runtime is necessary. A careful c
 
 **🤖 AI / Agents / Automated Auditors:** start at [`docs/ai/README.md`](docs/ai/README.md), not by reconstructing current truth from this human-facing README.  
 **📚 Deep human overview:** [`RESEARCH_OVERVIEW.md`](RESEARCH_OVERVIEW.md)  
+**🌍 Practical significance & applicability:** [`docs/APPLICABILITY.md`](docs/APPLICABILITY.md)  
+**📐 Documentation architecture:** [`docs/DOCUMENTATION_ARCHITECTURE.md`](docs/DOCUMENTATION_ARCHITECTURE.md)  
 **⚙ Machine-readable current state:** [`project-state.json`](project-state.json)  
 **📊 Current status:** [`STATUS.md`](STATUS.md)
 
@@ -46,6 +48,10 @@ A long-lived AI process may need to preserve more than conversation text:
 - provenance and epistemic status.
 
 But Continuum deliberately refuses to assume that all of this requires a large substrate. The research goal is to find the **minimum sufficient process state**.
+
+For practical examples across everyday workflows, creative work, science, engineering, organizations, high-stakes domains, and multi-agent systems, see **[Practical Significance, Applicability, and Boundaries](docs/APPLICABILITY.md)**.
+
+> **Potential applicability ≠ validated applicability ≠ deployment authorization.**
 
 ## 🗺 Mental map
 
@@ -153,6 +159,8 @@ The README stays intentionally stable. Volatile milestone, PR, gate and authoriz
 |---|---|---|
 | 👤 `README.md` / `README.ru.md` | Human landing page and stable mental model | Structural changes only |
 | 📚 `RESEARCH_OVERVIEW*.md` | Deep human conceptual explanation | Structural research changes |
+| 🌍 `docs/APPLICABILITY*.md` | Practical significance, applicability, and non-deployment boundaries | Structural conceptual changes |
+| 📐 `docs/DOCUMENTATION_ARCHITECTURE.md` | Human / AI / machine / evidence documentation contract | Documentation-architecture changes |
 | 🤖 `docs/ai/README.md` | Deterministic AI router and canonical `never infer` rules | AI/documentation contract changes |
 | 🤖 `AGENTS.md` | Repository scope and working contract | Scope / behavior contract changes |
 | ⚙ `project-state.json` | Exact volatile machine-readable state | State changes |
@@ -205,6 +213,8 @@ README.md
    ↓
 RESEARCH_OVERVIEW.md
    ↓
+docs/APPLICABILITY.md       ← why it matters / where it may apply
+   ↓
 docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md
    ↓
 future evidence / results
@@ -231,6 +241,8 @@ task-specific protocol / evidence
 ## 📚 Research record
 
 - Canonical preregistration: [`docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`](docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md)
+- Practical significance and applicability: [`docs/APPLICABILITY.md`](docs/APPLICABILITY.md)
+- Documentation architecture: [`docs/DOCUMENTATION_ARCHITECTURE.md`](docs/DOCUMENTATION_ARCHITECTURE.md)
 - Research index: [`docs/research/README.md`](docs/research/README.md)
 - Canonical Notion page: **🌎 Velantrim Continuum — IDPS Research 🪎**
 
