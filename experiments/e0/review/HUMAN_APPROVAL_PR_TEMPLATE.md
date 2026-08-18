@@ -14,9 +14,9 @@ Use this only after the human reviewer has independently inspected the exact Iss
 
 The reviewer should state that they independently reviewed the exact candidate artifacts and fixture/scenario semantics and approve only the versioned artifacts and exact SHA-256 bindings in the PR.
 
-## Required decisions
+## Required human decisions
 
-Record an `ACCEPT` plus a non-empty human note for every machine-keyed decision below:
+Record an `ACCEPT` plus a non-empty human note for **each of the 14 canonical human review rows** below. Machine-only assertions must not be inserted into this namespace.
 
 | Decision ID | Meaning |
 |---|---|
@@ -25,16 +25,19 @@ Record an `ACCEPT` plus a non-empty human note for every machine-keyed decision 
 | `F2_POST` | post-clarification semantics |
 | `F3` | superseded + active rule |
 | `F4` | rejected alternative / rationale |
-| `F5` | caution / confirmation semantics |
+| `F5_PRE` | caution remains unresolved before clarification |
+| `F5_POST` | post-clarification semantics, including variant-specific F5-E1/F5-E2 meaning |
 | `F6` | `NO_APPROVAL_RULE_ADOPTED` |
 | `F7` | temporal / confirmation gate |
-| `F8` | contested claims remain contested |
+| `F8_PRE` | contested source-attributed claims before clarification |
+| `F8_POST` | clarification adds no adjudication; conflict remains contested |
 | `T-PILOT-01` | pilot Transfer Oracle |
 | `T-EVIDENCE-01` | held-out Oracle review only |
 | `T-EVIDENCE-02` | held-out Oracle review only |
-| `AUTHORITY_AMBIGUITY_PROVENANCE` | cross-cutting authority/provenance check |
 
 `open_semantic_revisions` must be empty.
+
+> **Boundary:** machine assertions may independently deny package readiness/admissibility, but they must never rewrite, substitute, or impersonate one of the 14 human semantic decisions above.
 
 ## Candidate → approved bindings
 
@@ -49,7 +52,7 @@ Approval provenance record:
 
 `experiments/e0/approval/human-reference-approval.v0.1.json`
 
-The record must bind exact candidate and approved SHA-256 values and include the reviewed commit, canonical Issue #9 URL, reviewer identity/role, timestamp, all decisions, and:
+The record must bind exact candidate and approved SHA-256 values and include the reviewed commit, canonical Issue #9 URL, reviewer identity/role, timestamp, all 14 human decisions, and:
 
 ```json
 "evidence_lock": {"status": "NOT_CREATED", "sha256": null}
@@ -68,7 +71,7 @@ Expected machine result after a legitimate approval PR has materialized all requ
 
 `HUMAN_REFERENCE_APPROVAL_BINDINGS_VALID`
 
-Important: this machine result validates attestation structure and exact repository bindings. It **does not prove that a human actually performed the review**; the human act is a governance fact that must be explicitly recorded by the reviewer.
+Important: this machine result validates attestation structure and exact repository bindings that the validator actually checks. It **does not prove that a human actually performed or understood the review**; the human act remains an external governance fact that must be explicitly recorded by the reviewer.
 
 ## Boundary
 
@@ -81,4 +84,4 @@ This PR must not:
 - freeze production architecture;
 - authorize runtime, event sourcing, or ecosystem integration.
 
-After merge, the next permitted experimental action is a separate Pilot-only issue/PR using approved references and pilot fixtures, with all outputs labelled `PILOT — NOT EVIDENCE`.
+After merge, the next permitted experimental action is **not selected by this template**. A separate owner-authorized Pilot-only step is still required before any pilot execution, and all pilot outputs must remain labelled `PILOT — NOT EVIDENCE`.
