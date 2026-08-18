@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Validate a versioned human-reference approval binding before merge.
 
-This validator proves only repository facts: attestation structure, ACCEPT decisions,
-exact candidate/approved SHA-256 bindings, approved artifact status/version, and the
-continued absence of an Evidence Lock. It cannot prove that a human actually read
-or authored the attestation; that remains an external governance fact recorded in
-Issue #9 / the approval PR.
+This validator proves only repository facts: attestation structure, 14 ACCEPT decisions,
+reviewed-commit existence, exact review-input bytes from that commit tree, candidate and
+approved SHA-256 bindings, approved artifact status/version, and the continued absence
+of an Evidence Lock. It cannot prove that a human actually performed the review.
 """
 from __future__ import annotations
 
@@ -19,10 +18,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from review_snapshot import DEFAULT_PATHS as REVIEW_PATHS
+from review_snapshot import SNAPSHOT_VERSION, SnapshotError, build_snapshot
+
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
-APPROVAL_FORMAT = "velantrim-continuum:e0-human-reference-approval:v0.1"
-DEFAULT_APPROVAL = "experiments/e0/approval/human-reference-approval.v0.1.json"
+GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+APPROVAL_FORMAT = "velantrim-continuum:e0-human-reference-approval:v0.2"
+DEFAULT_APPROVAL = "experiments/e0/approval/human-reference-approval.v0.2.json"
 EXPECTED_REFERENCES = ("capture_gold", "transfer_oracle")
 EXPECTED_DECISIONS = (
     "F1",
@@ -87,6 +89,13 @@ def require_sha256(value: Any, field: str) -> str:
     return value
 
 
+def require_git_sha(value: Any, field: str) -> str:
+    value = require_string(value, field)
+    if not GIT_SHA_RE.fullmatch(value):
+        raise ValidationError(f"{field} must be a full 40-character lowercase Git SHA")
+    return value
+
+
 def require_timestamp(value: Any, field: str) -> str:
     value = require_string(value, field)
     if not value.endswith("Z"):
@@ -131,7 +140,26 @@ def validate_decisions(approval: dict[str, Any]) -> None:
         raise ValidationError("open_semantic_revisions must be empty before approval")
 
 
-def validate_reference(repo_root: Path, name: str, value: Any) -> list[str]:
+def validate_review_binding(approval: dict[str, Any], repo_root: Path, reviewed_commit: str) -> dict[str, str]:
+    binding = approval.get("review_snapshot")
+    if not isinstance(binding, dict) or set(binding) != {"snapshot_version", "snapshot_sha256", "reviewed_tree"}:
+        raise ValidationError("review_snapshot must contain exactly snapshot_version, snapshot_sha256, and reviewed_tree")
+    if binding.get("snapshot_version") != SNAPSHOT_VERSION:
+        raise ValidationError(f"review_snapshot.snapshot_version must be exactly {SNAPSHOT_VERSION!r}")
+    expected_snapshot_hash = require_sha256(binding.get("snapshot_sha256"), "review_snapshot.snapshot_sha256")
+    expected_tree = require_git_sha(binding.get("reviewed_tree"), "review_snapshot.reviewed_tree")
+    try:
+        snapshot = build_snapshot(repo_root, reviewed_commit, REVIEW_PATHS)
+    except SnapshotError as exc:
+        raise ValidationError(f"reviewed_repository_commit/tree binding invalid: {exc}") from exc
+    if snapshot["reviewed_tree"] != expected_tree:
+        raise ValidationError("review_snapshot.reviewed_tree does not match reviewed_repository_commit tree")
+    if snapshot["snapshot_sha256"] != expected_snapshot_hash:
+        raise ValidationError("review_snapshot.snapshot_sha256 does not match exact bytes from reviewed_repository_commit")
+    return {item["path"]: item["sha256"] for item in snapshot["artifacts"]}
+
+
+def validate_reference(repo_root: Path, name: str, value: Any, reviewed_artifacts: dict[str, str]) -> list[str]:
     if not isinstance(value, dict):
         raise ValidationError(f"references.{name} must be an object")
     if name == "capture_gold":
@@ -147,7 +175,12 @@ def validate_reference(repo_root: Path, name: str, value: Any) -> list[str]:
     candidate = resolve_repo_file(repo_root, candidate_text, f"references.{name}.candidate_path", prefix=candidate_prefix)
     candidate_hash = require_sha256(value.get("candidate_sha256"), f"references.{name}.candidate_sha256")
     if sha256_file(candidate) != candidate_hash:
-        raise ValidationError(f"references.{name}.candidate_sha256 does not match {candidate_text}")
+        raise ValidationError(f"references.{name}.candidate_sha256 does not match current {candidate_text}")
+    reviewed_hash = reviewed_artifacts.get(candidate_text)
+    if reviewed_hash is None:
+        raise ValidationError(f"references.{name}.candidate_path is not in the exact review snapshot scope")
+    if reviewed_hash != candidate_hash:
+        raise ValidationError(f"references.{name}.candidate_sha256 differs from reviewed-commit bytes for {candidate_text}")
     if load_json(candidate).get("authorship_status") != "AI_PROPOSED_DRAFT":
         raise ValidationError(f"{candidate_text} must remain AI_PROPOSED_DRAFT")
 
@@ -164,7 +197,7 @@ def validate_reference(repo_root: Path, name: str, value: Any) -> list[str]:
         raise ValidationError(f"references.{name}.approved_version differs from artifact version")
 
     return [
-        f"{name}: candidate={candidate_text} sha256={candidate_hash}",
+        f"{name}: reviewed candidate={candidate_text} sha256={candidate_hash}",
         f"{name}: approved={approved_text} sha256={approved_hash}",
     ]
 
@@ -182,9 +215,8 @@ def validate(approval: dict[str, Any], repo_root: Path, issue_number: int) -> li
     require_string(reviewer.get("role"), "reviewer.role")
     require_timestamp(approval.get("approved_at"), "approved_at")
 
-    reviewed_commit = require_string(approval.get("reviewed_repository_commit"), "reviewed_repository_commit")
-    if not COMMIT_RE.fullmatch(reviewed_commit):
-        raise ValidationError("reviewed_repository_commit must be a 40-character lowercase Git SHA")
+    reviewed_commit = require_git_sha(approval.get("reviewed_repository_commit"), "reviewed_repository_commit")
+    reviewed_artifacts = validate_review_binding(approval, repo_root.resolve(), reviewed_commit)
 
     issue_url = require_string(approval.get("issue_url"), "issue_url")
     parsed = urlparse(issue_url)
@@ -201,9 +233,13 @@ def validate(approval: dict[str, Any], repo_root: Path, issue_number: int) -> li
     if not isinstance(references, dict) or set(references) != set(EXPECTED_REFERENCES):
         raise ValidationError("references must contain exactly capture_gold and transfer_oracle")
 
-    messages: list[str] = []
+    messages = [
+        f"reviewed_commit={reviewed_commit}",
+        f"reviewed_tree={approval['review_snapshot']['reviewed_tree']}",
+        f"review_snapshot_sha256={approval['review_snapshot']['snapshot_sha256']}",
+    ]
     for name in EXPECTED_REFERENCES:
-        messages.extend(validate_reference(repo_root, name, references[name]))
+        messages.extend(validate_reference(repo_root, name, references[name], reviewed_artifacts))
     return messages
 
 
@@ -216,10 +252,10 @@ def main() -> int:
     except ValidationError as exc:
         print(f"HUMAN_REFERENCE_APPROVAL_ERROR: {exc}", file=sys.stderr)
         return 1
-    print("HUMAN_REFERENCE_APPROVAL_BINDINGS_VALID: attestation structure and SHA-256 bindings verified.")
+    print("HUMAN_REFERENCE_APPROVAL_BINDINGS_VALID: review commit/tree bytes, attestation structure, and SHA-256 bindings verified.")
     for message in messages:
         print(f"HUMAN_REFERENCE_APPROVAL_BINDING: {message}")
-    print("HUMAN_REFERENCE_APPROVAL_BOUNDARY: machine validation does not prove human authorship; evidence lock remains NOT_CREATED; no pilot/evidence authorized.")
+    print("HUMAN_REFERENCE_APPROVAL_BOUNDARY: machine validation does not prove human authorship or semantic correctness; evidence lock remains NOT_CREATED; no pilot/evidence authorized.")
     return 0
 
 
