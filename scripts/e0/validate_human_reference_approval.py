@@ -30,14 +30,15 @@ EXPECTED_DECISIONS = (
     "F2_POST",
     "F3",
     "F4",
-    "F5",
+    "F5_PRE",
+    "F5_POST",
     "F6",
     "F7",
-    "F8",
+    "F8_PRE",
+    "F8_POST",
     "T-PILOT-01",
     "T-EVIDENCE-01",
     "T-EVIDENCE-02",
-    "AUTHORITY_AMBIGUITY_PROVENANCE",
 )
 
 
@@ -118,7 +119,7 @@ def resolve_repo_file(repo_root: Path, relative_path: Any, field: str, *, prefix
 def validate_decisions(approval: dict[str, Any]) -> None:
     decisions = approval.get("decisions")
     if not isinstance(decisions, dict) or set(decisions) != set(EXPECTED_DECISIONS):
-        raise ValidationError("decisions must contain exactly the Issue #9 review decision IDs")
+        raise ValidationError("decisions must contain exactly the 14 canonical human review decision IDs")
     for item_id in EXPECTED_DECISIONS:
         entry = decisions[item_id]
         if not isinstance(entry, dict):
