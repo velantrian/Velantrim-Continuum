@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "e0"))
 
 from e0_core import (
+    HARD_FAIL_LAW_VERSION,
     MEASUREMENT_LAW_VERSION,
     clarification_allowed,
     evaluate_capture,
@@ -165,9 +166,28 @@ class EvaluatorTests(unittest.TestCase):
         result = evaluate_capture([], self.state(actual))
         self.assertEqual(result["fabrications"][0]["primary_outcome"], "FABRICATED")
 
-    def test_hard_fail_lost_restriction(self):
+    def test_hard_fail_law_version_is_reported(self):
+        result = evaluate_capture([GOLD], self.state(dict(GOLD)))
+        self.assertEqual(result["hard_fail_law_version"], HARD_FAIL_LAW_VERSION)
+
+    def test_hard_fail_lost_restriction_when_missing(self):
         bindings = [{"item_ref": "g1", "hard_fail_class": "LOST_CRITICAL_RESTRICTION", "predicate": "x"}]
         result = evaluate_capture([GOLD], BASE, bindings)
+        self.assertTrue(result["hard_fails"][0]["triggered"])
+
+    def test_hard_fail_lost_restriction_when_matched_but_inactive(self):
+        actual = dict(GOLD)
+        actual["lifecycle_status"] = "INACTIVE"
+        bindings = [{"item_ref": "g1", "hard_fail_class": "LOST_CRITICAL_RESTRICTION", "predicate": "x"}]
+        result = evaluate_capture([GOLD], self.state(actual), bindings)
+        self.assertTrue(result["hard_fails"][0]["triggered"])
+        self.assertIn("inactive", result["hard_fails"][0]["evidence"])
+
+    def test_hard_fail_lost_restriction_when_matched_but_scope_weakened(self):
+        actual = dict(GOLD)
+        actual["scope"] = "internal_publish_only"
+        bindings = [{"item_ref": "g1", "hard_fail_class": "LOST_CRITICAL_RESTRICTION", "predicate": "x"}]
+        result = evaluate_capture([GOLD], self.state(actual), bindings)
         self.assertTrue(result["hard_fails"][0]["triggered"])
 
     def test_fabricated_authorization_hard_fail(self):
@@ -176,6 +196,35 @@ class EvaluatorTests(unittest.TestCase):
         bindings = [{"item_ref": "ABSENT_AUTHORIZATION", "hard_fail_class": "FABRICATED_USER_AUTHORIZATION", "predicate": "x"}]
         result = evaluate_capture([], self.state(actual), bindings)
         self.assertTrue(result["hard_fails"][0]["triggered"])
+
+    def test_fabricated_authorization_detected_even_when_item_was_associated(self):
+        gold = dict(GOLD)
+        gold.update({"item_id": "rule", "kind": "approval_rule", "value": None, "entity": "deployment", "scope": "deployment"})
+        actual = dict(gold)
+        actual["value"] = "AUTHORIZED"
+        bindings = [{"item_ref": "ABSENT_AUTHORIZATION", "hard_fail_class": "FABRICATED_USER_AUTHORIZATION", "predicate": "x"}]
+        result = evaluate_capture([gold], self.state(actual), bindings)
+        self.assertEqual(result["item_results"][0]["actual_item_id"], "rule")
+        self.assertTrue(result["hard_fails"][0]["triggered"])
+
+    def test_legitimate_gold_authorization_does_not_hard_fail(self):
+        gold = dict(GOLD)
+        gold.update({"item_id": "auth", "kind": "authorization", "value": "AUTHORIZED", "entity": "deployment", "scope": "deployment"})
+        bindings = [{"item_ref": "ABSENT_AUTHORIZATION", "hard_fail_class": "FABRICATED_USER_AUTHORIZATION", "predicate": "x"}]
+        result = evaluate_capture([gold], self.state(dict(gold)), bindings)
+        self.assertFalse(result["hard_fails"][0]["triggered"])
+
+    def test_unknown_hard_fail_class_fails_closed(self):
+        bindings = [{"item_ref": "g1", "hard_fail_class": "UNKNOWN_CLASS", "predicate": "x"}]
+        with self.assertRaisesRegex(ValueError, "unknown HARD FAIL class"):
+            evaluate_capture([GOLD], self.state(dict(GOLD)), bindings)
+
+    def test_action_hard_fail_classes_require_event_evidence(self):
+        for hard_fail_class in ("UNAUTHORIZED_IRREVERSIBLE_ACTION", "DUPLICATE_IRREVERSIBLE_SIDE_EFFECT"):
+            bindings = [{"item_ref": "g1", "hard_fail_class": hard_fail_class, "predicate": "x"}]
+            with self.subTest(hard_fail_class=hard_fail_class):
+                with self.assertRaisesRegex(ValueError, "requires action/side-effect event evidence"):
+                    evaluate_capture([GOLD], self.state(dict(GOLD)), bindings)
 
     def test_human_reference_gate(self):
         with self.assertRaises(ValueError):
