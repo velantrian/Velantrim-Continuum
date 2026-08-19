@@ -9,14 +9,14 @@ Use this only after the human reviewer has independently inspected the exact Iss
 - **Review scope:** Gold / Oracle approval for future `PILOT — NOT EVIDENCE` only
 - **Reviewed repository commit:** `<full 40-character lowercase commit SHA>`
 - **Reviewed Git tree:** `<40-character tree SHA from review snapshot>`
-- **Review snapshot SHA-256:** `<64-character SHA-256 from review snapshot v0.3>`
+- **Review snapshot SHA-256:** `<64-character SHA-256 from review snapshot v0.4>`
 - **Reviewed at (UTC):** `<YYYY-MM-DDTHH:MM:SSZ>`
 - **Human reviewer:** `<name>`
 - **Reviewer role / authority:** `<role>`
 
 The reviewer should state that they independently reviewed the exact candidate artifacts, fixture/scenario semantics, preregistration, and the bound 14-row review protocol represented by the snapshot, and approve only the versioned artifacts and exact bindings in the PR.
 
-## Exact reviewed-byte binding
+## Exact reviewed tree-entry and byte binding
 
 Generate the review packet from the **Git tree of the exact commit being reviewed**, not from the current working tree:
 
@@ -27,16 +27,17 @@ python scripts/e0/review_snapshot.py \
   --output /path/outside/repo/issue-9-review-snapshot.json
 ```
 
-Snapshot v0.3 binds:
+Snapshot v0.4 binds:
 
 - the exact existing Git commit;
 - that commit's tree SHA;
 - the seven protocol-defined review/control paths, including `ISSUE_9_HUMAN_REVIEW_PROTOCOL.md` itself;
+- each reviewed path's regular-file Git mode;
 - each reviewed Git blob SHA;
 - each reviewed artifact SHA-256;
 - a canonical `snapshot_sha256` over the snapshot contents.
 
-A dirty or subsequently modified working tree must not change a snapshot for an already selected reviewed commit. Any change to a bound path, including the review protocol itself, invalidates the old snapshot for a new approval PR head.
+The approval-head validator must require every bound `HEAD` path to remain a regular Git blob with the **same mode and blob SHA** as reviewed, and must separately require the checked-out path to be non-symlink and byte-identical. A same-byte symlink replacement or executable-bit/mode change therefore invalidates the old review binding.
 
 ## Required human decisions
 
@@ -86,7 +87,7 @@ and bind at least:
 {
   "reviewed_repository_commit": "<commit SHA>",
   "review_snapshot": {
-    "snapshot_version": "0.3",
+    "snapshot_version": "0.4",
     "snapshot_sha256": "<snapshot SHA-256>",
     "reviewed_tree": "<tree SHA>"
   },
@@ -109,7 +110,7 @@ Expected machine result after a legitimate approval PR has materialized all requ
 
 `HUMAN_REFERENCE_APPROVAL_BINDINGS_VALID`
 
-The validator must independently re-read the exact reviewed commit/tree bytes and recompute the review snapshot. A commit-shaped string, a current-filesystem hash, or a supplied snapshot hash by itself is insufficient.
+The validator must independently re-read the exact reviewed commit/tree entries, recompute the review snapshot, compare the approval-head Git mode/blob identity for all seven bound paths, and separately verify current bytes. A commit-shaped string, filesystem hash alone, or supplied snapshot hash by itself is insufficient.
 
 Important: this machine result validates repository bindings that the validator actually checks. It **does not prove that a human actually performed or understood the review**; the human act remains an external governance fact that must be explicitly recorded by the reviewer.
 
