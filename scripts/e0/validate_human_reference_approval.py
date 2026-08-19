@@ -2,7 +2,7 @@
 """Validate a versioned human-reference approval binding before merge.
 
 This validator proves only repository facts: attestation structure, 14 ACCEPT decisions,
-reviewed-commit existence, exact review-input bytes from that commit tree, candidate and
+reviewed-commit existence, exact review-input Git tree entries and bytes, candidate and
 approved SHA-256 bindings, approved artifact status/version, and the continued absence
 of an Evidence Lock. It cannot prove that a human actually performed the review.
 """
@@ -19,7 +19,14 @@ from typing import Any
 from urllib.parse import urlparse
 
 from review_snapshot import DEFAULT_PATHS as REVIEW_PATHS
-from review_snapshot import SNAPSHOT_VERSION, SnapshotError, build_snapshot
+from review_snapshot import (
+    REGULAR_FILE_MODES,
+    SNAPSHOT_VERSION,
+    SnapshotError,
+    build_snapshot,
+    read_tree_entry_at_commit,
+    run_git,
+)
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -117,7 +124,10 @@ def resolve_repo_file(repo_root: Path, relative_path: Any, field: str, *, prefix
     if not text.startswith(prefix):
         raise ValidationError(f"{field} must begin with {prefix!r}")
     root = repo_root.resolve()
-    resolved = (root / text).resolve()
+    unresolved = root / text
+    if unresolved.is_symlink():
+        raise ValidationError(f"{field} must not be a symlink: {text}")
+    resolved = unresolved.resolve()
     if root not in resolved.parents:
         raise ValidationError(f"{field} escapes repository root")
     if not resolved.is_file():
@@ -140,7 +150,9 @@ def validate_decisions(approval: dict[str, Any]) -> None:
         raise ValidationError("open_semantic_revisions must be empty before approval")
 
 
-def validate_review_binding(approval: dict[str, Any], repo_root: Path, reviewed_commit: str) -> dict[str, str]:
+def validate_review_binding(
+    approval: dict[str, Any], repo_root: Path, reviewed_commit: str
+) -> dict[str, dict[str, str]]:
     binding = approval.get("review_snapshot")
     if not isinstance(binding, dict) or set(binding) != {"snapshot_version", "snapshot_sha256", "reviewed_tree"}:
         raise ValidationError("review_snapshot must contain exactly snapshot_version, snapshot_sha256, and reviewed_tree")
@@ -155,23 +167,61 @@ def validate_review_binding(approval: dict[str, Any], repo_root: Path, reviewed_
     if snapshot["reviewed_tree"] != expected_tree:
         raise ValidationError("review_snapshot.reviewed_tree does not match reviewed_repository_commit tree")
     if snapshot["snapshot_sha256"] != expected_snapshot_hash:
-        raise ValidationError("review_snapshot.snapshot_sha256 does not match exact bytes from reviewed_repository_commit")
-    return {item["path"]: item["sha256"] for item in snapshot["artifacts"]}
+        raise ValidationError("review_snapshot.snapshot_sha256 does not match exact bytes and Git entries from reviewed_repository_commit")
+    return {
+        item["path"]: {
+            "git_mode": item["git_mode"],
+            "git_blob_sha": item["git_blob_sha"],
+            "sha256": item["sha256"],
+        }
+        for item in snapshot["artifacts"]
+    }
 
 
-def validate_current_review_inputs(repo_root: Path, reviewed_artifacts: dict[str, str]) -> None:
+def validate_current_review_inputs(repo_root: Path, reviewed_artifacts: dict[str, dict[str, str]]) -> None:
     if set(reviewed_artifacts) != set(REVIEW_PATHS):
         raise ValidationError("recomputed review snapshot scope differs from the canonical review-input manifest")
     root = repo_root.resolve()
+    try:
+        current_head = run_git(root, ["rev-parse", "--verify", "HEAD^{commit}"], text=True).stdout.strip()
+    except SnapshotError as exc:
+        raise ValidationError(f"cannot resolve current approval-head commit: {exc}") from exc
+
     for relative in REVIEW_PATHS:
-        current = (root / relative).resolve()
+        expected = reviewed_artifacts[relative]
+        try:
+            current_mode, current_type, current_blob = read_tree_entry_at_commit(root, current_head, relative)
+        except SnapshotError as exc:
+            raise ValidationError(f"current approval-head Git entry invalid for {relative}: {exc}") from exc
+        if current_type != "blob" or current_mode not in REGULAR_FILE_MODES:
+            raise ValidationError(
+                f"current approval-head review input is not a regular Git blob: {relative} ({current_mode} {current_type})"
+            )
+        if current_mode != expected["git_mode"]:
+            raise ValidationError(
+                f"current approval-head Git mode differs from reviewed commit for {relative}: {current_mode} != {expected['git_mode']}"
+            )
+        if current_blob != expected["git_blob_sha"]:
+            raise ValidationError(
+                f"current approval-head Git blob differs from reviewed commit for {relative}: {current_blob} != {expected['git_blob_sha']}"
+            )
+
+        unresolved = root / relative
+        if unresolved.is_symlink():
+            raise ValidationError(f"current review input is a symlink: {relative}")
+        current = unresolved.resolve()
         if root not in current.parents or not current.is_file():
             raise ValidationError(f"current review input is missing or outside repository root: {relative}")
-        if sha256_file(current) != reviewed_artifacts[relative]:
+        if sha256_file(current) != expected["sha256"]:
             raise ValidationError(f"current review input differs from reviewed-commit bytes: {relative}")
 
 
-def validate_reference(repo_root: Path, name: str, value: Any, reviewed_artifacts: dict[str, str]) -> list[str]:
+def validate_reference(
+    repo_root: Path,
+    name: str,
+    value: Any,
+    reviewed_artifacts: dict[str, dict[str, str]],
+) -> list[str]:
     if not isinstance(value, dict):
         raise ValidationError(f"references.{name} must be an object")
     if name == "capture_gold":
@@ -188,10 +238,10 @@ def validate_reference(repo_root: Path, name: str, value: Any, reviewed_artifact
     candidate_hash = require_sha256(value.get("candidate_sha256"), f"references.{name}.candidate_sha256")
     if sha256_file(candidate) != candidate_hash:
         raise ValidationError(f"references.{name}.candidate_sha256 does not match current {candidate_text}")
-    reviewed_hash = reviewed_artifacts.get(candidate_text)
-    if reviewed_hash is None:
+    reviewed = reviewed_artifacts.get(candidate_text)
+    if reviewed is None:
         raise ValidationError(f"references.{name}.candidate_path is not in the exact review snapshot scope")
-    if reviewed_hash != candidate_hash:
+    if reviewed["sha256"] != candidate_hash:
         raise ValidationError(f"references.{name}.candidate_sha256 differs from reviewed-commit bytes for {candidate_text}")
     if load_json(candidate).get("authorship_status") != "AI_PROPOSED_DRAFT":
         raise ValidationError(f"{candidate_text} must remain AI_PROPOSED_DRAFT")
@@ -265,7 +315,7 @@ def main() -> int:
     except ValidationError as exc:
         print(f"HUMAN_REFERENCE_APPROVAL_ERROR: {exc}", file=sys.stderr)
         return 1
-    print("HUMAN_REFERENCE_APPROVAL_BINDINGS_VALID: review commit/tree bytes, attestation structure, and SHA-256 bindings verified.")
+    print("HUMAN_REFERENCE_APPROVAL_BINDINGS_VALID: review commit/tree/blob identity, exact bytes, attestation structure, and SHA-256 bindings verified.")
     for message in messages:
         print(f"HUMAN_REFERENCE_APPROVAL_BINDING: {message}")
     print("HUMAN_REFERENCE_APPROVAL_BOUNDARY: machine validation does not prove human authorship or semantic correctness; evidence lock remains NOT_CREATED; no pilot/evidence authorized.")
