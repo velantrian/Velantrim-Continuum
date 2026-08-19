@@ -114,10 +114,18 @@ class ApprovalValidatorTests(unittest.TestCase):
             },
         }
 
-    def test_snapshot_scope_binds_review_protocol(self) -> None:
-        self.assertEqual(SNAPSHOT_VERSION, "0.3")
+    def test_snapshot_scope_binds_review_protocol_and_git_modes(self) -> None:
+        self.assertEqual(SNAPSHOT_VERSION, "0.4")
         self.assertEqual(len(DEFAULT_PATHS), 7)
         self.assertIn("experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md", DEFAULT_PATHS)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            init_git_repo(root)
+            self.create_review_inputs(root)
+            reviewed_commit = self.commit_review_inputs(root)
+            snapshot = build_snapshot(root, reviewed_commit, DEFAULT_PATHS)
+            self.assertTrue(all(item["git_mode"] == "100644" for item in snapshot["artifacts"]))
+            self.assertTrue(all(len(item["git_blob_sha"]) == 40 for item in snapshot["artifacts"]))
 
     def test_canonical_human_decision_ids_are_exactly_fourteen(self) -> None:
         self.assertEqual(len(EXPECTED_DECISIONS), 14)
@@ -150,7 +158,7 @@ class ApprovalValidatorTests(unittest.TestCase):
             root = Path(temp)
             approval = self.build_valid_case(root)
             approval["review_snapshot"]["snapshot_sha256"] = "b" * 64
-            with self.assertRaisesRegex(ValidationError, "does not match exact bytes"):
+            with self.assertRaisesRegex(ValidationError, "does not match exact bytes and Git entries"):
                 validate(approval, root, 9)
 
     def test_reviewed_tree_must_match_commit(self) -> None:
@@ -187,6 +195,32 @@ class ApprovalValidatorTests(unittest.TestCase):
             protocol = root / "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md"
             protocol.write_text("changed decision rows after review\n", encoding="utf-8")
             with self.assertRaisesRegex(ValidationError, "current review input differs from reviewed-commit bytes"):
+                validate(approval, root, 9)
+
+    def test_committed_same_byte_protocol_symlink_tree_drift_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            approval = self.build_valid_case(root)
+            protocol = root / "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md"
+            copy = root / "experiments/e0/review-copy/protocol-copy.md"
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            copy.write_bytes(protocol.read_bytes())
+            protocol.unlink()
+            protocol.symlink_to("../review-copy/protocol-copy.md")
+            git(root, "add", "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md", "experiments/e0/review-copy/protocol-copy.md")
+            git(root, "commit", "-q", "-m", "same-byte protocol symlink drift")
+            with self.assertRaisesRegex(ValidationError, "not a regular Git blob"):
+                validate(approval, root, 9)
+
+    def test_committed_same_byte_git_mode_drift_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            approval = self.build_valid_case(root)
+            protocol = root / "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md"
+            protocol.chmod(0o755)
+            git(root, "add", "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md")
+            git(root, "commit", "-q", "-m", "protocol mode drift")
+            with self.assertRaisesRegex(ValidationError, "Git mode differs from reviewed commit"):
                 validate(approval, root, 9)
 
     def test_candidate_must_remain_draft_in_reviewed_commit_and_current_tree(self) -> None:
