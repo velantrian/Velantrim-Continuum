@@ -9,8 +9,9 @@ import subprocess
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
-SNAPSHOT_VERSION = "0.3"
+SNAPSHOT_VERSION = "0.4"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+REGULAR_FILE_MODES = {"100644", "100755"}
 DEFAULT_PATHS = [
     "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md",
     "docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md",
@@ -71,12 +72,12 @@ def commit_tree_sha(repo_root: Path, reviewed_commit: str) -> str:
     return run_git(repo_root, ["rev-parse", "--verify", f"{reviewed_commit}^{{tree}}"], text=True).stdout.strip()
 
 
-def read_blob_at_commit(repo_root: Path, reviewed_commit: str, relative: str) -> tuple[bytes, str]:
+def read_tree_entry_at_commit(repo_root: Path, commit: str, relative: str) -> tuple[str, str, str]:
     relative = normalize_repo_relative_path(relative)
-    listing = run_git(repo_root, ["ls-tree", "-z", "--full-tree", reviewed_commit, "--", relative]).stdout
+    listing = run_git(repo_root, ["ls-tree", "-z", "--full-tree", commit, "--", relative]).stdout
     records = [record for record in listing.split(b"\x00") if record]
     if len(records) != 1:
-        raise SnapshotError(f"reviewed commit does not contain exactly one tracked artifact at {relative!r}")
+        raise SnapshotError(f"commit does not contain exactly one tracked artifact at {relative!r}")
     try:
         metadata, raw_path = records[0].split(b"\t", 1)
         mode, object_type, object_sha = metadata.decode("ascii").split(" ", 2)
@@ -85,10 +86,17 @@ def read_blob_at_commit(repo_root: Path, reviewed_commit: str, relative: str) ->
         raise SnapshotError(f"could not parse Git tree entry for {relative!r}") from exc
     if listed_path != relative:
         raise SnapshotError(f"Git tree path mismatch for {relative!r}")
-    if object_type != "blob" or mode == "160000":
-        raise SnapshotError(f"reviewed artifact must be a Git blob, not {object_type}: {relative!r}")
+    return mode, object_type, object_sha
+
+
+def read_blob_at_commit(repo_root: Path, commit: str, relative: str) -> tuple[bytes, str, str]:
+    mode, object_type, object_sha = read_tree_entry_at_commit(repo_root, commit, relative)
+    if object_type != "blob" or mode not in REGULAR_FILE_MODES:
+        raise SnapshotError(
+            f"reviewed artifact must be a regular Git blob with mode 100644 or 100755, got {mode} {object_type}: {relative!r}"
+        )
     data = run_git(repo_root, ["cat-file", "blob", object_sha]).stdout
-    return data, object_sha
+    return data, object_sha, mode
 
 
 def canonical_snapshot_bytes(snapshot: dict) -> bytes:
@@ -107,8 +115,15 @@ def build_snapshot(repo_root: Path, reviewed_commit: str, paths: list[str]) -> d
         if normalized in seen:
             raise SnapshotError(f"duplicate review artifact path: {normalized}")
         seen.add(normalized)
-        data, blob_sha = read_blob_at_commit(root, commit, normalized)
-        artifacts.append({"path": normalized, "git_blob_sha": blob_sha, "sha256": sha256_bytes(data)})
+        data, blob_sha, mode = read_blob_at_commit(root, commit, normalized)
+        artifacts.append(
+            {
+                "path": normalized,
+                "git_mode": mode,
+                "git_blob_sha": blob_sha,
+                "sha256": sha256_bytes(data),
+            }
+        )
     snapshot = {
         "snapshot_version": SNAPSHOT_VERSION,
         "purpose": "ISSUE_9_HUMAN_REFERENCE_REVIEW_INPUT",
