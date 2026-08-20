@@ -7,9 +7,9 @@
   "research_foundation": "MERGED",
   "foundation_pr": 1,
   "foundation_merge_sha": "e14cf46f96724dda933ce647b46f72fc4866dc7c",
-  "current_workstream": "EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS",
+  "current_workstream": "EXPERIMENT_0_HUMAN_REFERENCE_REVIEW_GATE",
   "current_workstream_status": "ACTIVE",
-  "current_workstream_pr": 4,
+  "current_workstream_pr": null,
   "completed_workstreams": [
     {
       "name": "DOCUMENTATION_ARCHITECTURE_V1",
@@ -17,11 +17,45 @@
       "status": "MERGED",
       "merged_at": "2026-08-15T09:06:37Z",
       "merge_commit_sha": "533cc6abcf59d20f7a273098f043784c95421711"
+    },
+    {
+      "name": "E0_REVIEW_INPUT_GIT_TREE_BINDING_B01",
+      "pull_request": 23,
+      "status": "MERGED",
+      "merged_at": "2026-08-19T00:25:28Z",
+      "merge_commit_sha": "dbda5c364f5bc76eb033f90031ce03bf3f4f29e9"
+    },
+    {
+      "name": "E0_CAPTURE_CORRESPONDENCE_GLOBAL_ASSIGNMENT_V0_3",
+      "pull_request": 24,
+      "status": "MERGED",
+      "merged_at": "2026-08-20T22:04:04Z",
+      "merge_commit_sha": "b86f1e00a996f1af42a591b2beefde7eb16fb242"
     }
   ],
-  "next_engineering_milestone": "EXPERIMENT_0_EVALUATION_CONTRACT_AND_HARNESS_READINESS",
+  "next_engineering_milestone": "HUMAN_REFERENCE_REVIEW_THEN_SEPARATELY_AUTHORIZED_PILOT",
   "experiment_0_harness_started": true,
-  "experiment_0_harness_status": "IMPLEMENTATION_IN_PROGRESS",
+  "experiment_0_harness_status": "IMPLEMENTED_PRE_PILOT",
+  "capture_correspondence": {
+    "measurement_law_version": "e0-correspondence-v0.3",
+    "assignment": "GLOBAL_MAX_CARDINALITY_THEN_MAX_SCORE_FORCED_PAIRS_ONLY",
+    "order_independent": true,
+    "remediation_pr": 24,
+    "merge_commit_sha": "b86f1e00a996f1af42a591b2beefde7eb16fb242"
+  },
+  "human_reference_review": {
+    "issue": 9,
+    "status": "PENDING_HUMAN_ROW_DECISIONS",
+    "required_decisions": 14,
+    "accepted_decisions": 0,
+    "candidate_status": "AI_PROPOSED_DRAFT",
+    "reviewed_commit": "dbda5c364f5bc76eb033f90031ce03bf3f4f29e9",
+    "reviewed_tree": "03be5376d592ec9c12299627a6ec0507548363b8",
+    "snapshot_version": "0.4",
+    "snapshot_sha256": "e44650d54a4dd007a1c2039785f31ed5ab947877d5cd51000e01062b17016da4",
+    "review_scope_paths": 7,
+    "b01_specific_tree_entry_bypass": "CLOSED_ON_REVIEWED_HEAD"
+  },
   "experiment_0_pilot_status": "BLOCKED_HUMAN_REFERENCE_APPROVAL",
   "experiment_0_evidence_ready": false,
   "experiment_0_evidence_lock_sha": null,
@@ -46,9 +80,9 @@
   ],
   "primary_null_hypothesis": "A simple externally maintained current-state representation may be sufficient.",
   "state_provenance": {
-    "verified_base_head_sha": "098f03ddbabef042051fe8a6c8ae63c0e770af7f",
-    "reconciled_at": "2026-08-16T14:30:00Z",
-    "reconciliation_kind": "STATE_CHANGE"
+    "verified_base_head_sha": "b86f1e00a996f1af42a591b2beefde7eb16fb242",
+    "reconciled_at": "2026-08-20T22:04:04Z",
+    "reconciliation_kind": "STATE_CHANGE_AFTER_MATCHER_REMEDIATION"
   },
   "state_sync": {
     "authority": "GITHUB_FACTS_PLUS_REPOSITORY_SEMANTIC_STATE",
@@ -56,9 +90,9 @@
       "repository": "velantrian/Velantrim-Continuum",
       "branch": "main",
       "tracked_pull_request": {
-        "number": 2,
+        "number": 24,
         "expected_state": "MERGED",
-        "expected_merge_commit_sha": "533cc6abcf59d20f7a273098f043784c95421711"
+        "expected_merge_commit_sha": "b86f1e00a996f1af42a591b2beefde7eb16fb242"
       }
     },
     "derived_state_surfaces": [
