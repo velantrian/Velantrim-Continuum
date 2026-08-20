@@ -7,9 +7,11 @@ import unicodedata
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from global_assignment import forced_optimal_pairs
+
 UNCERTAIN = {"CAUTION", "UNRESOLVED", "CONTESTED"}
 STATUS_FIELDS = {"scope", "condition", "epistemic_status", "resolution_status", "lifecycle_status"}
-MEASUREMENT_LAW_VERSION = "e0-correspondence-v0.2"
+MEASUREMENT_LAW_VERSION = "e0-correspondence-v0.3"
 HARD_FAIL_LAW_VERSION = "e0-hard-fail-v0.2"
 MATCH_STRATEGY = "deterministic_semantic_fields"
 MIN_MATCH_SCORE = 5
@@ -142,21 +144,17 @@ def validate_match_spec(match_spec: dict[str, Any] | None) -> str:
 
 
 def match_items(gold_items: list[dict[str, Any]], actual_items: list[dict[str, Any]]) -> tuple[dict[int, int], list[int]]:
-    matches: dict[int, int] = {}
-    remaining = set(range(len(actual_items)))
+    scores: dict[tuple[int, int], int] = {}
     for gold_index, gold in enumerate(gold_items):
-        ranked = [(match_score(gold, actual_items[index]), index) for index in sorted(remaining) if association_compatible(gold, actual_items[index])]
-        ranked = [(score, index) for score, index in ranked if score >= MIN_MATCH_SCORE]
-        if not ranked:
-            continue
-        best_score = max(score for score, _ in ranked)
-        best = [index for score, index in ranked if score == best_score]
-        if len(best) != 1:
-            continue
-        actual_index = best[0]
-        matches[gold_index] = actual_index
-        remaining.remove(actual_index)
-    return matches, sorted(remaining)
+        for actual_index, actual in enumerate(actual_items):
+            score = match_score(gold, actual)
+            if score >= MIN_MATCH_SCORE:
+                scores[(gold_index, actual_index)] = score
+
+    matches = forced_optimal_pairs(len(gold_items), len(actual_items), scores)
+    matched_actual = set(matches.values())
+    extras = [index for index in range(len(actual_items)) if index not in matched_actual]
+    return matches, extras
 
 
 def mismatch_atoms(gold: dict[str, Any], actual: dict[str, Any]) -> list[dict[str, Any]]:
