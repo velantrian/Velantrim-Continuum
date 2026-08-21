@@ -12,7 +12,15 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "e0"))
 
 from review_snapshot import DEFAULT_PATHS, SNAPSHOT_VERSION, build_snapshot
-from validate_human_reference_approval import APPROVAL_FORMAT, EXPECTED_DECISIONS, ValidationError, validate
+from validate_human_reference_approval import (
+    APPROVAL_FORMAT,
+    APPROVAL_SEMANTIC_VERSION,
+    EXPECTED_BOUNDARY,
+    EXPECTED_BOUNDARY_STATEMENT,
+    EXPECTED_DECISIONS,
+    ValidationError,
+    validate,
+)
 
 
 def write_text(root: Path, relative: str, text: str) -> tuple[str, str]:
@@ -41,8 +49,24 @@ def init_git_repo(root: Path) -> None:
     git(root, "config", "user.name", "Test Reviewer")
 
 
+def snapshot_bindings(snapshot: dict) -> dict:
+    return {
+        item["path"]: {
+            "git_mode": item["git_mode"],
+            "git_blob_sha": item["git_blob_sha"],
+            "sha256": item["sha256"],
+        }
+        for item in snapshot["artifacts"]
+    }
+
+
 class ApprovalValidatorTests(unittest.TestCase):
-    def create_review_inputs(self, root: Path, *, capture_status: str = "AI_PROPOSED_DRAFT") -> tuple[str, str, str, str]:
+    def create_review_inputs(
+        self,
+        root: Path,
+        *,
+        capture_status: str = "AI_PROPOSED_DRAFT",
+    ) -> tuple[str, str, str, str]:
         write_text(root, "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md", "14-row protocol baseline\n")
         write_text(root, "docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md", "prereg baseline\n")
         write_json(root, "experiments/e0/fixtures/capture/pilot/fixtures.json", {"partition": "PILOT", "fixtures": []})
@@ -51,12 +75,12 @@ class ApprovalValidatorTests(unittest.TestCase):
         capture_path, capture_hash = write_json(
             root,
             "experiments/e0/gold/candidates/capture-gold.ai-proposed.json",
-            {"gold_version": "0.3-candidate", "authorship_status": capture_status},
+            {"gold_version": "0.3-candidate", "authorship_status": capture_status, "facts": ["capture"]},
         )
         oracle_path, oracle_hash = write_json(
             root,
             "experiments/e0/oracle/candidates/transfer-oracle.ai-proposed.json",
-            {"oracle_version": "0.1-candidate", "authorship_status": "AI_PROPOSED_DRAFT"},
+            {"oracle_version": "0.1-candidate", "authorship_status": "AI_PROPOSED_DRAFT", "facts": ["transfer"]},
         )
         return capture_path, capture_hash, oracle_path, oracle_hash
 
@@ -65,37 +89,72 @@ class ApprovalValidatorTests(unittest.TestCase):
         git(root, "commit", "-q", "-m", "review inputs")
         return git(root, "rev-parse", "HEAD")
 
-    def build_valid_case(self, root: Path) -> dict:
+    def build_valid_case(self, root: Path, *, capture_status: str = "AI_PROPOSED_DRAFT") -> dict:
         init_git_repo(root)
-        capture_candidate_path, capture_candidate_hash, oracle_candidate_path, oracle_candidate_hash = self.create_review_inputs(root)
+        capture_candidate_path, capture_candidate_hash, oracle_candidate_path, oracle_candidate_hash = self.create_review_inputs(
+            root,
+            capture_status=capture_status,
+        )
         reviewed_commit = self.commit_review_inputs(root)
         snapshot = build_snapshot(root, reviewed_commit, DEFAULT_PATHS)
 
         capture_approved_path, capture_approved_hash = write_json(
             root,
             "experiments/e0/gold/approved/capture-gold.v0.1.json",
-            {"gold_version": "0.1", "authorship_status": "HUMAN_APPROVED"},
+            {
+                "gold_version": "0.1",
+                "authorship_status": "HUMAN_APPROVED",
+                "human_approval_required": False,
+                "warning": "approved reference only",
+                "facts": ["capture"],
+            },
         )
         oracle_approved_path, oracle_approved_hash = write_json(
             root,
             "experiments/e0/oracle/approved/transfer-oracle.v0.1.json",
-            {"oracle_version": "0.1", "authorship_status": "HUMAN_APPROVED"},
+            {
+                "oracle_version": "0.1",
+                "authorship_status": "HUMAN_APPROVED",
+                "human_approval_required": False,
+                "warning": "approved reference only",
+                "facts": ["transfer"],
+            },
         )
         return {
             "approval_format": APPROVAL_FORMAT,
+            "semantic_version": APPROVAL_SEMANTIC_VERSION,
             "status": "HUMAN_APPROVED",
-            "reviewer": {"name": "Named Experimenter", "role": "Owner / Human Experimenter"},
+            "gate_status": "HUMAN_REFERENCE_APPROVED",
+            "reviewer": {
+                "name": "Named Experimenter",
+                "role": "Owner / Human Experimenter",
+                "github_login": "reviewer-login",
+            },
             "approved_at": "2026-08-16T15:30:00Z",
+            "issue_url": "https://github.com/velantrian/Velantrim-Continuum/issues/9",
+            "human_approval_provenance": {
+                "source": "GITHUB_ISSUE_9_CANONICAL_CHECKLIST",
+                "recorded_by_github_login": "reviewer-login",
+                "issue_updated_at": "2026-08-16T15:30:00Z",
+                "required_decisions": 14,
+                "recorded_decisions": 14,
+                "all_decisions": "ACCEPT",
+            },
             "reviewed_repository_commit": reviewed_commit,
             "review_snapshot": {
                 "snapshot_version": snapshot["snapshot_version"],
                 "snapshot_sha256": snapshot["snapshot_sha256"],
                 "reviewed_tree": snapshot["reviewed_tree"],
             },
-            "issue_url": "https://github.com/velantrian/Velantrim-Continuum/issues/9",
-            "decisions": {item: {"decision": "ACCEPT", "note": f"reviewed {item}"} for item in EXPECTED_DECISIONS},
+            "reviewed_paths": snapshot_bindings(snapshot),
+            "decisions": {
+                item: {"decision": "ACCEPT", "note": f"reviewed {item}"}
+                for item in EXPECTED_DECISIONS
+            },
             "open_semantic_revisions": [],
             "evidence_lock": {"status": "NOT_CREATED", "sha256": None},
+            "boundary_statement": EXPECTED_BOUNDARY_STATEMENT,
+            "boundary": dict(EXPECTED_BOUNDARY),
             "references": {
                 "capture_gold": {
                     "candidate_path": capture_candidate_path,
@@ -169,12 +228,24 @@ class ApprovalValidatorTests(unittest.TestCase):
             with self.assertRaisesRegex(ValidationError, "does not match reviewed_repository_commit tree"):
                 validate(approval, root, 9)
 
+    def test_recorded_reviewed_path_binding_cannot_lie(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            approval = self.build_valid_case(root)
+            target = DEFAULT_PATHS[0]
+            approval["reviewed_paths"][target]["sha256"] = "b" * 64
+            with self.assertRaisesRegex(ValidationError, "does not match the independently recomputed reviewed snapshot"):
+                validate(approval, root, 9)
+
     def test_working_tree_candidate_drift_is_rejected_even_with_updated_hash(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             approval = self.build_valid_case(root)
             path = root / approval["references"]["capture_gold"]["candidate_path"]
-            path.write_text(json.dumps({"gold_version": "0.3-candidate", "authorship_status": "AI_PROPOSED_DRAFT", "drift": True}), encoding="utf-8")
+            path.write_text(
+                json.dumps({"gold_version": "0.3-candidate", "authorship_status": "AI_PROPOSED_DRAFT", "drift": True}),
+                encoding="utf-8",
+            )
             approval["references"]["capture_gold"]["candidate_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
             with self.assertRaisesRegex(ValidationError, "current review input differs from reviewed-commit bytes"):
                 validate(approval, root, 9)
@@ -202,9 +273,9 @@ class ApprovalValidatorTests(unittest.TestCase):
             root = Path(temp)
             approval = self.build_valid_case(root)
             protocol = root / "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md"
-            copy = root / "experiments/e0/review-copy/protocol-copy.md"
-            copy.parent.mkdir(parents=True, exist_ok=True)
-            copy.write_bytes(protocol.read_bytes())
+            copy_path = root / "experiments/e0/review-copy/protocol-copy.md"
+            copy_path.parent.mkdir(parents=True, exist_ok=True)
+            copy_path.write_bytes(protocol.read_bytes())
             protocol.unlink()
             protocol.symlink_to("../review-copy/protocol-copy.md")
             git(root, "add", "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md", "experiments/e0/review-copy/protocol-copy.md")
@@ -226,28 +297,7 @@ class ApprovalValidatorTests(unittest.TestCase):
     def test_candidate_must_remain_draft_in_reviewed_commit_and_current_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            init_git_repo(root)
-            capture_path, capture_hash, oracle_path, oracle_hash = self.create_review_inputs(root, capture_status="HUMAN_APPROVED")
-            reviewed_commit = self.commit_review_inputs(root)
-            snapshot = build_snapshot(root, reviewed_commit, DEFAULT_PATHS)
-            approved_capture_path, approved_capture_hash = write_json(root, "experiments/e0/gold/approved/capture-gold.v0.1.json", {"gold_version": "0.1", "authorship_status": "HUMAN_APPROVED"})
-            approved_oracle_path, approved_oracle_hash = write_json(root, "experiments/e0/oracle/approved/transfer-oracle.v0.1.json", {"oracle_version": "0.1", "authorship_status": "HUMAN_APPROVED"})
-            approval = {
-                "approval_format": APPROVAL_FORMAT,
-                "status": "HUMAN_APPROVED",
-                "reviewer": {"name": "Named Experimenter", "role": "Owner"},
-                "approved_at": "2026-08-16T15:30:00Z",
-                "reviewed_repository_commit": reviewed_commit,
-                "review_snapshot": {"snapshot_version": snapshot["snapshot_version"], "snapshot_sha256": snapshot["snapshot_sha256"], "reviewed_tree": snapshot["reviewed_tree"]},
-                "issue_url": "https://github.com/velantrian/Velantrim-Continuum/issues/9",
-                "decisions": {item: {"decision": "ACCEPT", "note": "reviewed"} for item in EXPECTED_DECISIONS},
-                "open_semantic_revisions": [],
-                "evidence_lock": {"status": "NOT_CREATED", "sha256": None},
-                "references": {
-                    "capture_gold": {"candidate_path": capture_path, "candidate_sha256": capture_hash, "approved_path": approved_capture_path, "approved_sha256": approved_capture_hash, "approved_version": "0.1"},
-                    "transfer_oracle": {"candidate_path": oracle_path, "candidate_sha256": oracle_hash, "approved_path": approved_oracle_path, "approved_sha256": approved_oracle_hash, "approved_version": "0.1"},
-                },
-            }
+            approval = self.build_valid_case(root, capture_status="HUMAN_APPROVED")
             with self.assertRaisesRegex(ValidationError, "must remain AI_PROPOSED_DRAFT"):
                 validate(approval, root, 9)
 
@@ -255,7 +305,10 @@ class ApprovalValidatorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             approval = self.build_valid_case(root)
-            approval["decisions"]["AUTHORITY_AMBIGUITY_PROVENANCE"] = {"decision": "ACCEPT", "note": "machine-only"}
+            approval["decisions"]["AUTHORITY_AMBIGUITY_PROVENANCE"] = {
+                "decision": "ACCEPT",
+                "note": "machine-only",
+            }
             with self.assertRaisesRegex(ValidationError, "14 canonical human review decision IDs"):
                 validate(approval, root, 9)
 
@@ -275,12 +328,40 @@ class ApprovalValidatorTests(unittest.TestCase):
             with self.assertRaisesRegex(ValidationError, "does not match"):
                 validate(approval, root, 9)
 
+    def test_approved_artifact_cannot_reinterpret_reviewed_semantics(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            approval = self.build_valid_case(root)
+            approved = root / approval["references"]["capture_gold"]["approved_path"]
+            payload = json.loads(approved.read_text(encoding="utf-8"))
+            payload["facts"] = ["reinterpreted"]
+            approved.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+            approval["references"]["capture_gold"]["approved_sha256"] = hashlib.sha256(approved.read_bytes()).hexdigest()
+            with self.assertRaisesRegex(ValidationError, "changes reviewed reference semantics"):
+                validate(approval, root, 9)
+
     def test_evidence_lock_cannot_be_declared_in_approval(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             approval = self.build_valid_case(root)
             approval["evidence_lock"] = {"status": "EVIDENCE_READY", "sha256": "b" * 64}
             with self.assertRaisesRegex(ValidationError, "NOT_CREATED"):
+                validate(approval, root, 9)
+
+    def test_boundary_cannot_authorize_pilot(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            approval = self.build_valid_case(root)
+            approval["boundary"]["pilot"] = "AUTHORIZED"
+            with self.assertRaisesRegex(ValidationError, "human-reference-only non-authorization boundary"):
+                validate(approval, root, 9)
+
+    def test_provenance_login_must_match_reviewer(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            approval = self.build_valid_case(root)
+            approval["human_approval_provenance"]["recorded_by_github_login"] = "someone-else"
+            with self.assertRaisesRegex(ValidationError, "must match reviewer.github_login"):
                 validate(approval, root, 9)
 
     def test_wrong_issue_host_is_rejected(self) -> None:
@@ -293,8 +374,8 @@ class ApprovalValidatorTests(unittest.TestCase):
 
     def test_candidate_correction_path_does_not_require_approval_record(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "human-reference-approval-gate.yml").read_text(encoding="utf-8")
-        self.assertNotIn('experiments/e0/gold/candidates/**', workflow)
-        self.assertNotIn('experiments/e0/oracle/candidates/**', workflow)
+        self.assertNotIn("experiments/e0/gold/candidates/**", workflow)
+        self.assertNotIn("experiments/e0/oracle/candidates/**", workflow)
 
 
 if __name__ == "__main__":
