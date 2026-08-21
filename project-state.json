@@ -7,8 +7,8 @@
   "research_foundation": "MERGED",
   "foundation_pr": 1,
   "foundation_merge_sha": "e14cf46f96724dda933ce647b46f72fc4866dc7c",
-  "current_workstream": "EXPERIMENT_0_HUMAN_REFERENCE_REVIEW_GATE",
-  "current_workstream_status": "ACTIVE",
+  "current_workstream": "POST_HUMAN_REFERENCE_APPROVAL_STOP",
+  "current_workstream_status": "AWAITING_SEPARATE_OWNER_DECISION",
   "current_workstream_pr": null,
   "completed_workstreams": [
     {
@@ -33,7 +33,7 @@
       "merge_commit_sha": "b86f1e00a996f1af42a591b2beefde7eb16fb242"
     }
   ],
-  "next_engineering_milestone": "HUMAN_REFERENCE_REVIEW_THEN_SEPARATELY_AUTHORIZED_PILOT",
+  "next_engineering_milestone": "UNSELECTED_AFTER_HUMAN_REFERENCE_APPROVAL",
   "experiment_0_harness_started": true,
   "experiment_0_harness_status": "IMPLEMENTED_PRE_PILOT",
   "capture_correspondence": {
@@ -45,10 +45,14 @@
   },
   "human_reference_review": {
     "issue": 9,
-    "status": "PENDING_HUMAN_ROW_DECISIONS",
+    "status": "HUMAN_APPROVED",
     "required_decisions": 14,
-    "accepted_decisions": 0,
+    "accepted_decisions": 14,
     "candidate_status": "AI_PROPOSED_DRAFT",
+    "authoritative_reference_status": "HUMAN_APPROVED",
+    "approved_gold_path": "experiments/e0/gold/approved/capture-gold.v0.1.json",
+    "approved_oracle_path": "experiments/e0/oracle/approved/transfer-oracle.v0.1.json",
+    "approval_record_path": "experiments/e0/approval/human-reference-approval.v0.2.json",
     "reviewed_commit": "dbda5c364f5bc76eb033f90031ce03bf3f4f29e9",
     "reviewed_tree": "03be5376d592ec9c12299627a6ec0507548363b8",
     "snapshot_version": "0.4",
@@ -56,7 +60,7 @@
     "review_scope_paths": 7,
     "b01_specific_tree_entry_bypass": "CLOSED_ON_REVIEWED_HEAD"
   },
-  "experiment_0_pilot_status": "BLOCKED_HUMAN_REFERENCE_APPROVAL",
+  "experiment_0_pilot_status": "NOT_AUTHORIZED_REQUIRES_SEPARATE_OWNER_DECISION",
   "experiment_0_evidence_ready": false,
   "experiment_0_evidence_lock_sha": null,
   "e0c_started": false,
@@ -80,9 +84,9 @@
   ],
   "primary_null_hypothesis": "A simple externally maintained current-state representation may be sufficient.",
   "state_provenance": {
-    "verified_base_head_sha": "b86f1e00a996f1af42a591b2beefde7eb16fb242",
-    "reconciled_at": "2026-08-20T22:04:04Z",
-    "reconciliation_kind": "STATE_CHANGE_AFTER_MATCHER_REMEDIATION"
+    "verified_base_head_sha": "294f939510006d7509beafac176b01abf05a4ae7",
+    "reconciled_at": "2026-08-21T19:11:00Z",
+    "reconciliation_kind": "STATE_CHANGE_HUMAN_REFERENCE_APPROVAL"
   },
   "state_sync": {
     "authority": "GITHUB_FACTS_PLUS_REPOSITORY_SEMANTIC_STATE",

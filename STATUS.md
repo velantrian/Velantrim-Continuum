@@ -14,9 +14,10 @@
 | Capture correspondence law | ✅ v0.3 — global order-independent assignment, PR #24 merged |
 | B-01 review-input Git tree binding | ✅ Narrow bypass closed on reviewed head via PR #23 |
 | Human Review snapshot | ✅ v0.4 selected from `dbda5c3…`; 7 bound paths |
-| Human Gold / Oracle decisions | ⛔ `0 / 14` — explicit row decisions still required |
-| Gold / Oracle candidates | ⚠️ `AI_PROPOSED_DRAFT` — non-authoritative |
-| Harness-validation Pilot | ⛔ Not run; blocked on human reference approval |
+| Human Gold / Oracle decisions | ✅ `14 / 14` — explicit `ACCEPT` recorded in Issue #9 |
+| Historical Gold / Oracle candidates | ⚠️ `AI_PROPOSED_DRAFT` — preserved as non-authoritative history |
+| Authoritative Gold / Oracle | ✅ `HUMAN_APPROVED` — versioned approved artifacts materialized |
+| Harness-validation Pilot | ⛔ Not run; **NOT AUTHORIZED** by human-reference approval |
 | Evidence readiness | ❌ False |
 | Evidence Lock | ❌ Not created |
 | E0-C Capture Isolation evidence | ❌ Not started |
@@ -35,9 +36,13 @@
         ↓
 ✅ review-input binding / snapshot v0.4 selected
         ↓
-⛔ 14-row human Gold / Oracle review (currently 0/14)
+✅ 14-row human Gold / Oracle review — 14/14 ACCEPT
         ↓
-only after all required human decisions and a bounded approval change:
+✅ versioned HUMAN_APPROVED Gold / Oracle + approval provenance
+        ↓
+🛑 STOP — next engineering milestone is not selected by this approval
+        ↓
+only after a separate owner authorization:
 PILOT — NOT EVIDENCE
         ↓
 pilot fixes
@@ -62,11 +67,15 @@ The old sequential greedy association rule could produce a different Capture res
 4. accept only pairs forced in every globally optimal assignment;
 5. leave global ambiguity fail-closed.
 
-Permutation regressions are part of the harness tests. This is a measurement-correctness remediation, not human approval or runtime authorization.
+Permutation regressions are part of the harness tests. This is a measurement-correctness remediation, not runtime authorization.
 
 ## Human reference integrity gate
 
-Issue #9 remains the active semantic gate. Exactly 14 human decision rows require one explicit `ACCEPT`, `REVISE`, or `REJECT` each. No generic continuation instruction, AI recommendation, passing test, hash, receipt, or CI result substitutes for those decisions.
+Issue #9 records exactly 14 canonical human semantic decisions, all `ACCEPT`. The authoritative references are materialized separately from historical AI-proposed candidates:
+
+- approved Capture Gold: `experiments/e0/gold/approved/capture-gold.v0.1.json`;
+- approved Transfer Oracle: `experiments/e0/oracle/approved/transfer-oracle.v0.1.json`;
+- approval provenance: `experiments/e0/approval/human-reference-approval.v0.2.json`.
 
 The selected review baseline remains:
 
@@ -75,9 +84,9 @@ The selected review baseline remains:
 - snapshot version: `0.4`;
 - snapshot SHA-256: `e44650d54a4dd007a1c2039785f31ed5ab947877d5cd51000e01062b17016da4`;
 - bound paths: exactly 7;
-- current human decisions: `0 / 14`.
+- human decisions: `14 / 14 ACCEPT`.
 
-PR #24 did not modify any of those seven review-snapshot paths, so the matcher remediation does not itself create a new human-reference snapshot or human decision.
+No bound review/control path changed between the reviewed baseline and the approval base. Historical candidate artifacts remain `AI_PROPOSED_DRAFT` and byte-bound to the reviewed snapshot.
 
 ## Current authority boundary
 
@@ -85,6 +94,7 @@ PR #24 did not modify any of those seven review-snapshot paths, so the matcher r
 - [`project-state.json`](project-state.json) owns selected semantic project state and authorization flags.
 - [`docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`](docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md) owns Experiment 0 semantics.
 - [`docs/research/E0_CORRESPONDENCE_LAW_V0_3.md`](docs/research/E0_CORRESPONDENCE_LAW_V0_3.md) owns the current Capture association measurement law.
+- The human-reference approval record proves the recorded approval/bindings; it does not grant execution authority.
 - This file and [`docs/ai/CURRENT_STATE.md`](docs/ai/CURRENT_STATE.md) are derived explanations.
 
 ## Boundary
