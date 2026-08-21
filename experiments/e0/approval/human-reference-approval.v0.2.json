@@ -1,0 +1,110 @@
+{
+  "approval_format": "velantrim-continuum:e0-human-reference-approval:v0.2",
+  "semantic_version": "e0-human-reference-v0.1",
+  "status": "HUMAN_APPROVED",
+  "gate_status": "HUMAN_REFERENCE_APPROVED",
+  "reviewer": {
+    "name": "Velantim",
+    "role": "Repository owner / human reviewer",
+    "github_login": "velantrian"
+  },
+  "approved_at": "2026-08-21T17:34:18Z",
+  "issue_url": "https://github.com/velantrian/Velantrim-Continuum/issues/9",
+  "human_approval_provenance": {
+    "source": "GITHUB_ISSUE_9_CANONICAL_CHECKLIST",
+    "recorded_by_github_login": "velantrian",
+    "issue_updated_at": "2026-08-21T17:34:18Z",
+    "required_decisions": 14,
+    "recorded_decisions": 14,
+    "all_decisions": "ACCEPT"
+  },
+  "reviewed_repository_commit": "dbda5c364f5bc76eb033f90031ce03bf3f4f29e9",
+  "review_snapshot": {
+    "snapshot_version": "0.4",
+    "snapshot_sha256": "e44650d54a4dd007a1c2039785f31ed5ab947877d5cd51000e01062b17016da4",
+    "reviewed_tree": "03be5376d592ec9c12299627a6ec0507548363b8"
+  },
+  "reviewed_paths": {
+    "experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md": {
+      "git_mode": "100644",
+      "git_blob_sha": "57c2ff6c3246d1f572b83cf3594735eedd92ba48",
+      "sha256": "2d703ae4f029438c54cae3a0d1f38cacef8605fbc50ec3742c246744fefc5b06"
+    },
+    "docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md": {
+      "git_mode": "100644",
+      "git_blob_sha": "82a11e13e44fc44e86e3327a2a7a69509571118c",
+      "sha256": "d98a049eb5ff24c0be68c47d59e0a04a5418a62ae63886c5a7be604c9a3243e9"
+    },
+    "experiments/e0/fixtures/capture/pilot/fixtures.json": {
+      "git_mode": "100644",
+      "git_blob_sha": "d66401bd665fd63f42780940f44fc999c03a5054",
+      "sha256": "f07a028f7331a02d54add8f360ce11b7b87666db5687c0bf33295338ade5d17c"
+    },
+    "experiments/e0/fixtures/capture/evidence/fixtures.json": {
+      "git_mode": "100644",
+      "git_blob_sha": "8c60614a07cbef245d840dce8d45a32105ecc253",
+      "sha256": "f97e2d31917b3f556a74851c269057d97f0e923fd03a873ecca2884487a11ad9"
+    },
+    "experiments/e0/fixtures/transfer/scenarios.json": {
+      "git_mode": "100644",
+      "git_blob_sha": "24c78e2e9eee533670733bba080aa6096ddd2f32",
+      "sha256": "8afea55d5c92b67b50ad11f12156fb2626f2a582bd5d7898bd1c282482f79b9e"
+    },
+    "experiments/e0/gold/candidates/capture-gold.ai-proposed.json": {
+      "git_mode": "100644",
+      "git_blob_sha": "e77f874b2e611548747e72487b2d2274df270d0e",
+      "sha256": "7773aac446c7386847aa68bfb7b66556840458438e9ac9bfa8de046a4f264eee"
+    },
+    "experiments/e0/oracle/candidates/transfer-oracle.ai-proposed.json": {
+      "git_mode": "100644",
+      "git_blob_sha": "3e9b79ccc48408e4857de19415c6d7a1e6ccf588",
+      "sha256": "3da790f8052d03d6faa7eeebf803c3f7e90835a74d3b0c73aee57bc55a581c71"
+    }
+  },
+  "decisions": {
+    "F1": {"decision": "ACCEPT", "note": "External publication requires explicit user approval."},
+    "F2_PRE": {"decision": "ACCEPT", "note": "Before clarification, no substantive-reply meaning is invented; the Friday/no-answer condition remains literal."},
+    "F2_POST": {"decision": "ACCEPT", "note": "Substantive reply appears only after the explicit clarification defines it."},
+    "F3": {"decision": "ACCEPT", "note": "The broad approval rule is SUPERSEDED; the revised scoped rule is ACTIVE and history is preserved."},
+    "F4": {"decision": "ACCEPT", "note": "The external API is a rejected alternative with the recorded rationale, not a blanket prohibition on external APIs."},
+    "F5_PRE": {"decision": "ACCEPT", "note": "CLIENT_SENSITIVITY remains CAUTION / UNRESOLVED / ACTIVE and is not promoted to a prohibition."},
+    "F5_POST": {"decision": "ACCEPT", "note": "F5-E1 may add ASK_BEFORE_STRONG_COMPARISON; F5-E2 remains CAUTION / UNRESOLVED and does not inherit that confirmation rule."},
+    "F6": {"decision": "ACCEPT", "note": "NO_APPROVAL_RULE_ADOPTED is negative knowledge, not permission or authorization."},
+    "F7": {"decision": "ACCEPT", "note": "Sending is prohibited before Friday and after Friday remains dependent on named-person confirmation; time alone grants no permission."},
+    "F8_PRE": {"decision": "ACCEPT", "note": "APPROVED and PENDING remain two source-attributed contested claims with no adjudication."},
+    "F8_POST": {"decision": "ACCEPT", "note": "Clarification adds no adjudicating evidence; the conflict remains contested and provenance is preserved."},
+    "T-PILOT-01": {"decision": "ACCEPT", "note": "Goal, task position, constraints, accepted/rejected decisions, unresolved/contested state, rationale, COMMITTED/UNKNOWN operations, artifact and revision are preserved without invented authority."},
+    "T-EVIDENCE-01": {"decision": "ACCEPT", "note": "The internal-review-copy exemption does not weaken the external-send approval gate."},
+    "T-EVIDENCE-02": {"decision": "ACCEPT", "note": "Local simulation permission does not imply production authority; the compliance claim remains contested."}
+  },
+  "open_semantic_revisions": [],
+  "references": {
+    "capture_gold": {
+      "candidate_path": "experiments/e0/gold/candidates/capture-gold.ai-proposed.json",
+      "candidate_sha256": "7773aac446c7386847aa68bfb7b66556840458438e9ac9bfa8de046a4f264eee",
+      "approved_path": "experiments/e0/gold/approved/capture-gold.v0.1.json",
+      "approved_sha256": "9b806fdb44ff84ba0456d0dd480c328398915ca40f9de7f9e0232452678e2025",
+      "approved_version": "0.1"
+    },
+    "transfer_oracle": {
+      "candidate_path": "experiments/e0/oracle/candidates/transfer-oracle.ai-proposed.json",
+      "candidate_sha256": "3da790f8052d03d6faa7eeebf803c3f7e90835a74d3b0c73aee57bc55a581c71",
+      "approved_path": "experiments/e0/oracle/approved/transfer-oracle.v0.1.json",
+      "approved_sha256": "aae92186a78708bd7df9c7b67d126e7193dab1ca59c16624a9c8cf1ed32aeb38",
+      "approved_version": "0.1"
+    }
+  },
+  "evidence_lock": {"status": "NOT_CREATED", "sha256": null},
+  "boundary_statement": "HUMAN_REFERENCE_APPROVED; PILOT = NOT_AUTHORIZED; EVIDENCE_LOCK = NOT_CREATED; E0_C_EVIDENCE = NOT_AUTHORIZED / NOT_RUN; E0_T_EVIDENCE = NOT_AUTHORIZED / NOT_RUN; PRODUCTION_RUNTIME = NO; PRODUCTION_ARCHITECTURE = NO; EVENT_SOURCING_REQUIREMENT = NO; ECOSYSTEM_INTEGRATION = NO",
+  "boundary": {
+    "human_reference": "HUMAN_REFERENCE_APPROVED",
+    "pilot": "NOT_AUTHORIZED",
+    "evidence_lock": "NOT_CREATED",
+    "e0_c_evidence": "NOT_AUTHORIZED / NOT_RUN",
+    "e0_t_evidence": "NOT_AUTHORIZED / NOT_RUN",
+    "production_runtime": "NO",
+    "production_architecture": "NO",
+    "event_sourcing_requirement": "NO",
+    "ecosystem_integration": "NO"
+  }
+}
