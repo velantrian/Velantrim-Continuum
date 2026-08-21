@@ -1,0 +1,64 @@
+{
+  "approval_format": "velantrim-continuum:e0-human-reference-approval:v0.2",
+  "status": "HUMAN_APPROVED",
+  "approval_scope": "HUMAN_REFERENCE_REVIEW_GATE_ONLY",
+  "reviewer": {
+    "name": "velantrian",
+    "role": "Repository owner / human experimenter"
+  },
+  "approved_at": "2026-08-21T19:11:00Z",
+  "reviewed_repository_commit": "dbda5c364f5bc76eb033f90031ce03bf3f4f29e9",
+  "review_snapshot": {
+    "snapshot_version": "0.4",
+    "snapshot_sha256": "e44650d54a4dd007a1c2039785f31ed5ab947877d5cd51000e01062b17016da4",
+    "reviewed_tree": "03be5376d592ec9c12299627a6ec0507548363b8"
+  },
+  "issue_url": "https://github.com/velantrian/Velantrim-Continuum/issues/9",
+  "decisions": {
+    "F1": {"decision": "ACCEPT", "note": "Explicit publication approval restriction reviewed and accepted."},
+    "F2_PRE": {"decision": "ACCEPT", "note": "Pre-clarification Friday/no-answer condition preserved without inventing a substantive criterion."},
+    "F2_POST": {"decision": "ACCEPT", "note": "Substantive-reply criterion appears only after explicit clarification."},
+    "F3": {"decision": "ACCEPT", "note": "Superseded broad rule and active scoped rule are preserved distinctly."},
+    "F4": {"decision": "ACCEPT", "note": "External API remains a rejected alternative with rationale, not a blanket ban."},
+    "F5_PRE": {"decision": "ACCEPT", "note": "Client sensitivity remains CAUTION / UNRESOLVED / ACTIVE, not a prohibition."},
+    "F5_POST": {"decision": "ACCEPT", "note": "F5-E1 may add ask-before-strong-comparison; F5-E2 remains unresolved caution and does not inherit that rule."},
+    "F6": {"decision": "ACCEPT", "note": "NO_APPROVAL_RULE_ADOPTED remains negative knowledge, not permission or authorization."},
+    "F7": {"decision": "ACCEPT", "note": "Before-Friday prohibition and after-Friday named-person confirmation dependency are both preserved."},
+    "F8_PRE": {"decision": "ACCEPT", "note": "APPROVED and PENDING remain source-attributed contested claims without adjudication."},
+    "F8_POST": {"decision": "ACCEPT", "note": "Clarification adds no adjudication; conflict and provenance remain preserved."},
+    "T-PILOT-01": {"decision": "ACCEPT", "note": "Required transfer dimensions, COMMITTED/UNKNOWN states, revision, and authority boundaries are accepted."},
+    "T-EVIDENCE-01": {"decision": "ACCEPT", "note": "Internal-review-copy exemption does not weaken the external-send approval gate."},
+    "T-EVIDENCE-02": {"decision": "ACCEPT", "note": "Local simulation permission does not imply production authority; compliance remains contested."}
+  },
+  "open_semantic_revisions": [],
+  "evidence_lock": {
+    "status": "NOT_CREATED",
+    "sha256": null
+  },
+  "references": {
+    "capture_gold": {
+      "candidate_path": "experiments/e0/gold/candidates/capture-gold.ai-proposed.json",
+      "candidate_sha256": "7773aac446c7386847aa68bfb7b66556840458438e9ac9bfa8de046a4f264eee",
+      "approved_path": "experiments/e0/gold/approved/capture-gold.v0.1.json",
+      "approved_sha256": "29f9266f51aef86c3fb59b20500e4584d27e3e85f21c844ab63cec11eeb502a7",
+      "approved_version": "0.1"
+    },
+    "transfer_oracle": {
+      "candidate_path": "experiments/e0/oracle/candidates/transfer-oracle.ai-proposed.json",
+      "candidate_sha256": "3da790f8052d03d6faa7eeebf803c3f7e90835a74d3b0c73aee57bc55a581c71",
+      "approved_path": "experiments/e0/oracle/approved/transfer-oracle.v0.1.json",
+      "approved_sha256": "766a90b0e2ed4322d0eb32400f849d2eeeccec3c34b80768cadf451e35b5b205",
+      "approved_version": "0.1"
+    }
+  },
+  "does_not_authorize": [
+    "PILOT_EXECUTION",
+    "EVIDENCE_LOCK",
+    "E0_C_EVIDENCE",
+    "E0_T_EVIDENCE",
+    "PRODUCTION_ARCHITECTURE",
+    "PRODUCTION_RUNTIME",
+    "EVENT_SOURCING_REQUIREMENT",
+    "ECOSYSTEM_INTEGRATION"
+  ]
+}

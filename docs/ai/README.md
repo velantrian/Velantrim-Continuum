@@ -17,7 +17,7 @@ Do **not** reconstruct current project truth from the human-facing README alone.
 7. Task-specific fixtures, evaluators, review/approval records, results or evidence when they exist.
 8. `RESEARCH_OVERVIEW.md` and `README.md` for human-oriented conceptual context.
 
-> **DO NOT AUTO-SELECT NEXT MILESTONE.** Audit order, an open Issue, a successful harness check, a ready review packet, or a future-work entry is not implementation/evidence/runtime authorization.
+> **DO NOT AUTO-SELECT NEXT MILESTONE.** Audit order, a closed/open Issue, a successful harness check, human-reference approval, or a future-work entry is not Pilot/evidence/runtime authorization.
 
 ## Authority model
 
@@ -35,6 +35,9 @@ AGENTS.md
         │
 formal research protocol
         ├── Experiment 0 semantics
+        │
+human-reference approval record + Issue #9
+        ├── approved Gold / Oracle semantics and exact reviewed bindings
         │
 committed evidence
         ├── what was actually observed
@@ -67,42 +70,50 @@ Never infer any of the following without explicit evidence:
 - Continuum is already approved for integration into Titan, Crystal, Native Kernel or Mentaury;
 - `READY_FOR_HUMAN_ATTESTATION` means `HUMAN_APPROVED`;
 - a generic instruction to continue/finish work is item-level human Gold/Oracle review;
+- `HUMAN_APPROVED` Gold / Oracle means Pilot is authorized;
 - Pilot means Evidence or Evidence Lock means Evidence authorization.
 
 ## Current canonical sequence
 
-Fresh repository state must still be verified live. At the 2026-08-17 audit checkpoint the bounded program is:
+Fresh repository state must still be verified live. The current bounded program is:
 
 ```text
 Research foundation                     ✅ merged
 Documentation architecture              ✅ merged
-Harness-readiness milestone             ✅ selected / ACTIVE
+Harness-readiness milestone             ✅ selected / implemented pre-Pilot
 Preregistration hardening               ✅ merged
 Schemas / F1–F8 / transfer fixtures     ✅ merged
 Deterministic evaluator / E0 harness     ✅ implemented and CI-validated
-Human-review engineering preparation    ✅ READY_FOR_HUMAN_ATTESTATION
-Human semantic Gold / Oracle approval    ⛔ NOT GRANTED
-Pilot — NOT EVIDENCE                     ⛔ not run
+Human-review engineering preparation    ✅ completed
+Human semantic Gold / Oracle review      ✅ 14 / 14 ACCEPT
+Versioned authoritative Gold / Oracle    ✅ HUMAN_APPROVED
+Pilot — NOT EVIDENCE                     ⛔ not run / NOT AUTHORIZED
 Evidence Lock                            ❌ none
-E0-C evidence                            ❌ not started / not authorized by docs
+E0-C evidence                            ❌ not started / not authorized
 Capture analysis                         ❌ not reached
-E0-T evidence                            ❌ not started / not authorized by docs
+E0-T evidence                            ❌ not started / not authorized
 Transfer analysis                        ❌ not reached
 Architecture Reassessment               ❌ not reached
 Production architecture                 ❌ not frozen
-Production runtime                      ❌ not authorized
-Ecosystem integration                   ❌ not authorized
+Production runtime                       ❌ not authorized
+Ecosystem integration                    ❌ not authorized
 ```
 
 The research dependency sequence is:
 
 `E0-C Capture Isolation → Capture analysis → E0-T Transfer Isolation → Transfer analysis → mandatory Architecture Reassessment`
 
-Before E0-C evidence, the current harness-readiness workstream still requires the human-reference gate, Pilot-only validation, allowed Pilot corrections, Evidence Lock, then **STOP**. None of those dependencies automatically authorize the next step.
+Before E0-C evidence, the current state is deliberately stopped after human-reference approval. A Pilot-only step, any Pilot corrections, and Evidence Lock each remain separate later gates. None of those dependencies is authorized automatically by human-reference approval.
 
 ## Human-reference rule
 
-Issue #9 and `experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md` define the current research-integrity gate.
+Issue #9 and `experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md` define the human-reference review semantics. The authoritative materialization is recorded in:
+
+- `experiments/e0/gold/approved/capture-gold.v0.1.json`;
+- `experiments/e0/oracle/approved/transfer-oracle.v0.1.json`;
+- `experiments/e0/approval/human-reference-approval.v0.2.json`.
+
+Historical candidate inputs remain preserved as `AI_PROPOSED_DRAFT`; they are not mutated in place.
 
 ```text
 AI_PROPOSED_DRAFT
@@ -111,11 +122,14 @@ AI_PROPOSED_DRAFT
 machine-valid hashes / structure
 != human semantic approval
 
-AI pre-review
-!= human attestation
+HUMAN_APPROVED reference truth
+!= Pilot authorization
+
+Pilot authorization
+!= Evidence authorization
 ```
 
-A human reviewer must make item-level `ACCEPT / REVISE / REJECT` decisions against the bound candidate/version before authoritative Gold/Oracle may be materialized.
+The approval record binds exactly the reviewed commit/tree/snapshot and 14 accepted human rows. Machine validation may verify those repository bindings but does not manufacture the external human act.
 
 ## Change classification
 
@@ -149,14 +163,15 @@ Repository automation may verify:
 - provenance lineage from a reviewed base commit to current `main`;
 - atomic updates of `project-state.json` with declared always-derived volatile state surfaces.
 
-Automation must **not** choose the next milestone, start Experiment 0 evidence, authorize runtime work, or change research conclusions.
+Automation must **not** choose the next milestone, start a Pilot, start Experiment 0 evidence, authorize runtime work, or change research conclusions.
 
 ## Presentation never creates authority
 
 - README may summarize, visualize and link.
 - `STATUS.md` and `docs/ai/CURRENT_STATE.md` may summarize current state.
 - machine state may encode a selected semantic state.
-- evidence may justify a conclusion.
+- the human-reference approval record may bind approved reference truth.
+- evidence may justify a research conclusion.
 - the future-work ledger may preserve open questions and dependency order.
 
 None of these may silently rewrite the formal experiment protocol or authorize production capability.
