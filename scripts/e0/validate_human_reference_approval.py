@@ -3,12 +3,14 @@
 
 This validator proves only repository facts: attestation structure, 14 ACCEPT decisions,
 reviewed-commit existence, exact review-input Git tree entries and bytes, candidate and
-approved SHA-256 bindings, approved artifact status/version, and the continued absence
-of an Evidence Lock. It cannot prove that a human actually performed the review.
+approved SHA-256 bindings, semantic-copy materialization, explicit non-authorization
+boundaries, and the continued absence of an Evidence Lock. It cannot prove that a human
+actually performed or understood the review.
 """
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import re
@@ -31,6 +33,7 @@ from review_snapshot import (
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 APPROVAL_FORMAT = "velantrim-continuum:e0-human-reference-approval:v0.2"
+APPROVAL_SEMANTIC_VERSION = "e0-human-reference-v0.1"
 DEFAULT_APPROVAL = "experiments/e0/approval/human-reference-approval.v0.2.json"
 EXPECTED_REFERENCES = ("capture_gold", "transfer_oracle")
 EXPECTED_DECISIONS = (
@@ -48,6 +51,26 @@ EXPECTED_DECISIONS = (
     "T-PILOT-01",
     "T-EVIDENCE-01",
     "T-EVIDENCE-02",
+)
+EXPECTED_BOUNDARY = {
+    "human_reference": "HUMAN_REFERENCE_APPROVED",
+    "pilot": "NOT_AUTHORIZED",
+    "evidence_lock": "NOT_CREATED",
+    "e0_c_evidence": "NOT_AUTHORIZED / NOT_RUN",
+    "e0_t_evidence": "NOT_AUTHORIZED / NOT_RUN",
+    "production_runtime": "NO",
+    "production_architecture": "NO",
+    "event_sourcing_requirement": "NO",
+    "ecosystem_integration": "NO",
+}
+EXPECTED_BOUNDARY_STATEMENT = (
+    "HUMAN_REFERENCE_APPROVED; PILOT = NOT_AUTHORIZED; EVIDENCE_LOCK = NOT_CREATED; "
+    "E0_C_EVIDENCE = NOT_AUTHORIZED / NOT_RUN; E0_T_EVIDENCE = NOT_AUTHORIZED / NOT_RUN; "
+    "PRODUCTION_RUNTIME = NO; PRODUCTION_ARCHITECTURE = NO; EVENT_SOURCING_REQUIREMENT = NO; "
+    "ECOSYSTEM_INTEGRATION = NO"
+)
+REFERENCE_AUTHORITY_METADATA = frozenset(
+    {"authorship_status", "human_approval_required", "warning"}
 )
 
 
@@ -135,6 +158,14 @@ def resolve_repo_file(repo_root: Path, relative_path: Any, field: str, *, prefix
     return resolved
 
 
+def semantic_reference_payload(document: dict[str, Any], version_key: str) -> dict[str, Any]:
+    value = copy.deepcopy(document)
+    value.pop(version_key, None)
+    for key in REFERENCE_AUTHORITY_METADATA:
+        value.pop(key, None)
+    return value
+
+
 def validate_decisions(approval: dict[str, Any]) -> None:
     decisions = approval.get("decisions")
     if not isinstance(decisions, dict) or set(decisions) != set(EXPECTED_DECISIONS):
@@ -148,6 +179,38 @@ def validate_decisions(approval: dict[str, Any]) -> None:
         require_string(entry.get("note"), f"decisions.{item_id}.note")
     if approval.get("open_semantic_revisions") not in ([], None):
         raise ValidationError("open_semantic_revisions must be empty before approval")
+
+
+def validate_human_provenance_and_boundary(approval: dict[str, Any]) -> None:
+    if require_string(approval.get("semantic_version"), "semantic_version") != APPROVAL_SEMANTIC_VERSION:
+        raise ValidationError(f"semantic_version must be exactly {APPROVAL_SEMANTIC_VERSION!r}")
+    if approval.get("gate_status") != "HUMAN_REFERENCE_APPROVED":
+        raise ValidationError("gate_status must be HUMAN_REFERENCE_APPROVED")
+
+    reviewer = approval.get("reviewer")
+    if not isinstance(reviewer, dict):
+        raise ValidationError("reviewer must be an object")
+    reviewer_login = require_string(reviewer.get("github_login"), "reviewer.github_login")
+
+    provenance = approval.get("human_approval_provenance")
+    if not isinstance(provenance, dict):
+        raise ValidationError("human_approval_provenance must be an object")
+    if provenance.get("source") != "GITHUB_ISSUE_9_CANONICAL_CHECKLIST":
+        raise ValidationError("human_approval_provenance.source must identify the canonical Issue #9 checklist")
+    if require_string(provenance.get("recorded_by_github_login"), "human_approval_provenance.recorded_by_github_login") != reviewer_login:
+        raise ValidationError("human approval provenance GitHub login must match reviewer.github_login")
+    require_timestamp(provenance.get("issue_updated_at"), "human_approval_provenance.issue_updated_at")
+    if provenance.get("required_decisions") != len(EXPECTED_DECISIONS):
+        raise ValidationError("human_approval_provenance.required_decisions must be exactly 14")
+    if provenance.get("recorded_decisions") != len(EXPECTED_DECISIONS):
+        raise ValidationError("human_approval_provenance.recorded_decisions must be exactly 14")
+    if provenance.get("all_decisions") != "ACCEPT":
+        raise ValidationError("human_approval_provenance.all_decisions must be ACCEPT")
+
+    if approval.get("boundary") != EXPECTED_BOUNDARY:
+        raise ValidationError("boundary must preserve the exact human-reference-only non-authorization boundary")
+    if require_string(approval.get("boundary_statement"), "boundary_statement") != EXPECTED_BOUNDARY_STATEMENT:
+        raise ValidationError("boundary_statement must preserve the exact human-reference-only non-authorization boundary")
 
 
 def validate_review_binding(
@@ -176,6 +239,21 @@ def validate_review_binding(
         }
         for item in snapshot["artifacts"]
     }
+
+
+def validate_recorded_reviewed_paths(
+    approval: dict[str, Any], reviewed_artifacts: dict[str, dict[str, str]]
+) -> None:
+    recorded = approval.get("reviewed_paths")
+    if not isinstance(recorded, dict) or set(recorded) != set(REVIEW_PATHS):
+        raise ValidationError("reviewed_paths must contain exactly the seven canonical review/control paths")
+    for relative in REVIEW_PATHS:
+        entry = recorded.get(relative)
+        expected = reviewed_artifacts[relative]
+        if not isinstance(entry, dict) or set(entry) != {"git_mode", "git_blob_sha", "sha256"}:
+            raise ValidationError(f"reviewed_paths.{relative} must contain exactly git_mode, git_blob_sha, and sha256")
+        if entry != expected:
+            raise ValidationError(f"reviewed_paths.{relative} does not match the independently recomputed reviewed snapshot")
 
 
 def validate_current_review_inputs(repo_root: Path, reviewed_artifacts: dict[str, dict[str, str]]) -> None:
@@ -243,7 +321,8 @@ def validate_reference(
         raise ValidationError(f"references.{name}.candidate_path is not in the exact review snapshot scope")
     if reviewed["sha256"] != candidate_hash:
         raise ValidationError(f"references.{name}.candidate_sha256 differs from reviewed-commit bytes for {candidate_text}")
-    if load_json(candidate).get("authorship_status") != "AI_PROPOSED_DRAFT":
+    candidate_document = load_json(candidate)
+    if candidate_document.get("authorship_status") != "AI_PROPOSED_DRAFT":
         raise ValidationError(f"{candidate_text} must remain AI_PROPOSED_DRAFT")
 
     approved_text = require_string(value.get("approved_path"), f"references.{name}.approved_path")
@@ -254,9 +333,13 @@ def validate_reference(
     document = load_json(approved)
     if document.get("authorship_status") != "HUMAN_APPROVED":
         raise ValidationError(f"{approved_text} must declare authorship_status HUMAN_APPROVED")
+    if document.get("human_approval_required") is not False:
+        raise ValidationError(f"{approved_text} must set human_approval_required to false after approval")
     artifact_version = require_string(document.get(version_key), f"{approved_text}.{version_key}")
     if require_string(value.get("approved_version"), f"references.{name}.approved_version") != artifact_version:
         raise ValidationError(f"references.{name}.approved_version differs from artifact version")
+    if semantic_reference_payload(candidate_document, version_key) != semantic_reference_payload(document, version_key):
+        raise ValidationError(f"{approved_text} changes reviewed reference semantics instead of only approval/version metadata")
 
     return [
         f"{name}: reviewed candidate={candidate_text} sha256={candidate_hash}",
@@ -276,9 +359,11 @@ def validate(approval: dict[str, Any], repo_root: Path, issue_number: int) -> li
     require_string(reviewer.get("name"), "reviewer.name")
     require_string(reviewer.get("role"), "reviewer.role")
     require_timestamp(approval.get("approved_at"), "approved_at")
+    validate_human_provenance_and_boundary(approval)
 
     reviewed_commit = require_git_sha(approval.get("reviewed_repository_commit"), "reviewed_repository_commit")
     reviewed_artifacts = validate_review_binding(approval, repo_root.resolve(), reviewed_commit)
+    validate_recorded_reviewed_paths(approval, reviewed_artifacts)
     validate_current_review_inputs(repo_root, reviewed_artifacts)
 
     issue_url = require_string(approval.get("issue_url"), "issue_url")
@@ -315,10 +400,10 @@ def main() -> int:
     except ValidationError as exc:
         print(f"HUMAN_REFERENCE_APPROVAL_ERROR: {exc}", file=sys.stderr)
         return 1
-    print("HUMAN_REFERENCE_APPROVAL_BINDINGS_VALID: review commit/tree/blob identity, exact bytes, attestation structure, and SHA-256 bindings verified.")
+    print("HUMAN_REFERENCE_APPROVAL_BINDINGS_VALID: review commit/tree/blob identity, exact bytes, recorded per-path bindings, semantic-copy materialization, attestation structure, explicit non-authorization boundary, and SHA-256 bindings verified.")
     for message in messages:
         print(f"HUMAN_REFERENCE_APPROVAL_BINDING: {message}")
-    print("HUMAN_REFERENCE_APPROVAL_BOUNDARY: machine validation does not prove human authorship or semantic correctness; evidence lock remains NOT_CREATED; no pilot/evidence authorized.")
+    print("HUMAN_REFERENCE_APPROVAL_BOUNDARY: machine validation does not prove human authorship or semantic correctness; evidence lock remains NOT_CREATED; pilot/evidence/production authority remain ungranted.")
     return 0
 
 
