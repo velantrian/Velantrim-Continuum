@@ -12,6 +12,7 @@ Velantrim Continuum is a research-first repository. Research artifacts are inten
 - AI entrypoint: [`../ai/README.md`](../ai/README.md)
 - Machine current state: [`../../project-state.json`](../../project-state.json)
 - Human current status: [`../../STATUS.md`](../../STATUS.md)
+- [`SMART_CONTEXT_HANDOFF_MAPPING.md`](SMART_CONTEXT_HANDOFF_MAPPING.md) — non-canonical application mapping for Context Observer / StateDelta / successor handoff; not Experiment 0, not a selected milestone, and not authorization.
 
 ## Research program order
 
@@ -34,3 +35,5 @@ This is the stable protocol order, not a statement that any stage is currently r
 `docs/research/**` stores research protocols, experiment artifacts and evidence-oriented material. It does not automatically define production architecture or authorize runtime capability.
 
 No production runtime or ecosystem integration should be added merely because candidate mechanisms have been discussed.
+
+Application mappings such as Smart Context/Handoff do not replace the null hypothesis that a simpler explicit current-state representation may be sufficient.
