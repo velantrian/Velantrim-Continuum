@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Fail-closed preflight for an explicitly owner-authorized E0 Pilot.
 
-This script does not grant authority. It verifies both a bounded Pilot manifest and the
-canonical repository authorization state before any diagnostic run may proceed.
+This script does not grant authority. It verifies a bounded Pilot manifest, the exact
+canonical package binding, and a non-circular Git authorization transition before any
+diagnostic run may proceed.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -24,8 +26,16 @@ CAPTURE_PILOT_PATH = "experiments/e0/fixtures/capture/pilot/fixtures.json"
 TRANSFER_PATH = "experiments/e0/fixtures/transfer/scenarios.json"
 ALLOWED_POSTURES = {"UNCONTROLLED_LOCAL_ADVISORY"}
 PILOT_OUTPUT_DESTINATION = ".velantrim-continuum-pilot-runs"
+PILOT_MANIFEST_PREFIX = "experiments/e0/pilot/"
 FORBIDDEN_SECRET_KEYS = {"api_key", "token", "secret", "password", "credential_secret_value"}
 AUTHORIZED_PILOT_STATE = "AUTHORIZED_BOUNDED_PILOT"
+AUTHORIZATION_PACKAGE_STATE = "AUTHORIZED_BOUNDED_PILOT_PACKAGE"
+AUTHORIZATION_TRANSITION_STATIC_PATHS = {
+    PROJECT_STATE_PATH,
+    "STATUS.md",
+    "docs/ai/CURRENT_STATE.md",
+    "docs/research/OD_PILOT_01_DRAFT.md",
+}
 
 
 class PreflightError(ValueError):
@@ -81,6 +91,27 @@ def run_git(root: Path, *args: str) -> str:
     return proc.stdout.strip()
 
 
+def git_is_ancestor(root: Path, ancestor: str, descendant: str = "HEAD") -> bool:
+    proc = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return True
+    if proc.returncode == 1:
+        return False
+    raise PreflightError(f"git merge-base --is-ancestor failed: {proc.stderr.strip()}")
+
+
+def ensure_clean_worktree(root: Path) -> None:
+    dirty = run_git(root, "status", "--porcelain")
+    if dirty:
+        raise PreflightError(f"execution worktree is not clean: {dirty.splitlines()[0]}")
+
+
 def reject_secret_material(value: Any, path: str = "manifest") -> None:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -118,17 +149,26 @@ def evidence_ids(root: Path) -> set[str]:
 
 
 def canonical_manifest_path(root: Path, manifest_path: Path) -> str:
+    if manifest_path.is_symlink():
+        raise PreflightError("authorized Pilot manifest must not be a symlink")
     resolved = manifest_path.resolve()
     try:
         relative = resolved.relative_to(root)
     except ValueError as exc:
         raise PreflightError("authorized Pilot manifest must be a repository-relative canonical artifact") from exc
-    if manifest_path.is_symlink():
-        raise PreflightError("authorized Pilot manifest must not be a symlink")
-    return relative.as_posix()
+    path = relative.as_posix()
+    if not path.startswith(PILOT_MANIFEST_PREFIX):
+        raise PreflightError(f"authorized Pilot manifest must live under {PILOT_MANIFEST_PREFIX}")
+    return path
 
 
-def validate_canonical_authorization(root: Path, *, manifest_path: Path | None = None, manifest_sha256: str | None = None) -> None:
+def validate_canonical_authorization(
+    root: Path,
+    *,
+    manifest: dict[str, Any] | None = None,
+    manifest_path: Path | None = None,
+    manifest_sha256: str | None = None,
+) -> dict[str, Any]:
     state = load_json(root / PROJECT_STATE_PATH)
     status = state.get("experiment_0_pilot_status")
     if status != AUTHORIZED_PILOT_STATE:
@@ -146,16 +186,53 @@ def validate_canonical_authorization(root: Path, *, manifest_path: Path | None =
     authorization = state.get("experiment_0_pilot_authorization")
     if not isinstance(authorization, dict):
         raise PreflightError("canonical Pilot authorization package binding is absent")
-    if authorization.get("status") != "AUTHORIZED_BOUNDED_PILOT_PACKAGE":
+    if authorization.get("status") != AUTHORIZATION_PACKAGE_STATE:
         raise PreflightError("canonical Pilot authorization package status is invalid")
     require_string(authorization.get("authorization_id"), "experiment_0_pilot_authorization.authorization_id")
     approved_path = require_string(authorization.get("manifest_path"), "experiment_0_pilot_authorization.manifest_path")
     approved_sha = require_sha256(authorization.get("manifest_sha256"), "experiment_0_pilot_authorization.manifest_sha256")
-    if manifest_path is None or manifest_sha256 is None:
-        raise PreflightError("exact manifest path/hash are required for canonical Pilot authorization binding")
+    approved_base = require_sha(authorization.get("authorization_base_commit"), "experiment_0_pilot_authorization.authorization_base_commit")
+    approved_base_tree = require_sha(authorization.get("authorization_base_tree"), "experiment_0_pilot_authorization.authorization_base_tree")
+
+    if manifest is None or manifest_path is None or manifest_sha256 is None:
+        raise PreflightError("exact manifest bytes/path are required for canonical Pilot authorization binding")
     actual_path = canonical_manifest_path(root, manifest_path)
     if actual_path != approved_path or manifest_sha256 != approved_sha:
         raise PreflightError("Pilot manifest does not match canonical owner-approved package binding")
+
+    manifest_base = require_sha(manifest.get("authorization_base_commit"), "authorization_base_commit")
+    manifest_base_tree = require_sha(manifest.get("authorization_base_tree"), "authorization_base_tree")
+    if manifest_base != approved_base or manifest_base_tree != approved_base_tree:
+        raise PreflightError("Pilot manifest base identity does not match canonical authorization binding")
+    return authorization
+
+
+def validate_authorization_transition(root: Path, manifest: dict[str, Any], manifest_path: Path) -> tuple[str, str, list[str]]:
+    base_commit = require_sha(manifest.get("authorization_base_commit"), "authorization_base_commit")
+    base_tree = require_sha(manifest.get("authorization_base_tree"), "authorization_base_tree")
+    try:
+        actual_base_tree = run_git(root, "rev-parse", f"{base_commit}^{{tree}}")
+    except PreflightError as exc:
+        raise PreflightError("authorization_base_commit is not available as a Git commit") from exc
+    if actual_base_tree != base_tree:
+        raise PreflightError("authorization_base_tree does not match authorization_base_commit")
+
+    current_head = run_git(root, "rev-parse", "HEAD")
+    current_tree = run_git(root, "rev-parse", "HEAD^{tree}")
+    if current_head != base_commit and not git_is_ancestor(root, base_commit, current_head):
+        raise PreflightError("current HEAD is not authorization_base_commit or its descendant")
+
+    manifest_rel = canonical_manifest_path(root, manifest_path)
+    changed_text = run_git(root, "diff", "--name-only", f"{base_commit}..{current_head}")
+    changed_paths = [item for item in changed_text.splitlines() if item]
+    allowed_paths = set(AUTHORIZATION_TRANSITION_STATIC_PATHS)
+    allowed_paths.add(manifest_rel)
+    forbidden = sorted(set(changed_paths) - allowed_paths)
+    if forbidden:
+        raise PreflightError(f"authorization transition changed non-allowed paths: {forbidden}")
+
+    ensure_clean_worktree(root)
+    return current_head, current_tree, changed_paths
 
 
 def validate_manifest(
@@ -168,8 +245,15 @@ def validate_manifest(
     check_authority_state: bool = True,
 ) -> list[str]:
     reject_secret_material(manifest)
+    authorization: dict[str, Any] | None = None
     if check_authority_state:
-        validate_canonical_authorization(root, manifest_path=manifest_path, manifest_sha256=manifest_sha256)
+        authorization = validate_canonical_authorization(
+            root,
+            manifest=manifest,
+            manifest_path=manifest_path,
+            manifest_sha256=manifest_sha256,
+        )
+
     if manifest.get("run_type") != "PILOT" or manifest.get("label") != "PILOT — NOT EVIDENCE":
         raise PreflightError("manifest must be explicitly labelled PILOT — NOT EVIDENCE")
     if manifest.get("owner_decision_id") != "OD-PILOT-01":
@@ -179,15 +263,15 @@ def validate_manifest(
     require_string(manifest.get("owner_github_login"), "owner_github_login")
     require_string(manifest.get("owner_adopted_at"), "owner_adopted_at")
 
-    execution_head = require_sha(manifest.get("execution_head_commit"), "execution_head_commit")
-    execution_tree = require_sha(manifest.get("execution_tree"), "execution_tree")
+    base_commit = require_sha(manifest.get("authorization_base_commit"), "authorization_base_commit")
+    base_tree = require_sha(manifest.get("authorization_base_tree"), "authorization_base_tree")
+    runtime_head = "UNCHECKED"
+    runtime_tree = "UNCHECKED"
+    changed_paths: list[str] = []
     if check_git:
-        if run_git(root, "rev-parse", "HEAD") != execution_head:
-            raise PreflightError("execution_head_commit does not equal current HEAD")
-        if run_git(root, "rev-parse", "HEAD^{tree}") != execution_tree:
-            raise PreflightError("execution_tree does not equal current HEAD tree")
-        if run_git(root, "status", "--porcelain"):
-            raise PreflightError("execution worktree is not clean")
+        if manifest_path is None:
+            raise PreflightError("manifest_path is required for Git authorization-transition validation")
+        runtime_head, runtime_tree, changed_paths = validate_authorization_transition(root, manifest, manifest_path)
 
     approval = manifest.get("human_approval")
     if not isinstance(approval, dict) or approval.get("path") != APPROVAL_PATH:
@@ -217,8 +301,8 @@ def validate_manifest(
     if not isinstance(requested, list) or not requested or any(not isinstance(item, str) for item in requested):
         raise PreflightError("fixture_or_scenario_ids must be a non-empty string list")
     known_pilot = pilot_ids(root)
-    forbidden = evidence_ids(root)
-    if set(requested) & forbidden:
+    forbidden_ids = evidence_ids(root)
+    if set(requested) & forbidden_ids:
         raise PreflightError("Evidence fixture/scenario requested by Pilot manifest")
     unknown = set(requested) - known_pilot
     if unknown:
@@ -282,19 +366,35 @@ def validate_manifest(
         raise PreflightError(
             f"output_destination must be the dedicated non-repository Pilot root {PILOT_OUTPUT_DESTINATION!r}"
         )
-    return [f"execution_head={execution_head}", f"pilot_ids={','.join(requested)}", f"posture={posture}"]
+
+    if authorization is not None and authorization.get("authorization_base_commit") != base_commit:
+        raise PreflightError("canonical authorization base changed during manifest validation")
+
+    return [
+        f"authorization_base={base_commit}",
+        f"authorization_base_tree={base_tree}",
+        f"runtime_head={runtime_head}",
+        f"runtime_tree={runtime_tree}",
+        f"authorization_transition_paths={','.join(changed_paths) if changed_paths else '<none>'}",
+        f"pilot_ids={','.join(requested)}",
+        f"posture={posture}",
+    ]
 
 
 def validate_human_approval(root: Path) -> None:
+    child_env = os.environ.copy()
+    child_env["PYTHONDONTWRITEBYTECODE"] = "1"
     proc = subprocess.run(
-        [sys.executable, "scripts/e0/validate_human_reference_approval.py", "--repo-root", str(root)],
+        [sys.executable, "-B", "scripts/e0/validate_human_reference_approval.py", "--repo-root", str(root)],
         cwd=root,
+        env=child_env,
         text=True,
         capture_output=True,
         check=False,
     )
     if proc.returncode != 0 or "HUMAN_REFERENCE_APPROVAL_BINDINGS_VALID" not in proc.stdout:
         raise PreflightError(f"human-reference approval validator failed: {(proc.stderr or proc.stdout).strip()}")
+    ensure_clean_worktree(root)
 
 
 def main() -> int:
@@ -319,7 +419,7 @@ def main() -> int:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, PreflightError) as exc:
         print(f"PILOT_PREFLIGHT_ERROR: {exc}", file=sys.stderr)
         return 1
-    print("PILOT_PREFLIGHT_VALID: canonical owner authorization is present and the exact bounded Pilot package is bound.")
+    print("PILOT_PREFLIGHT_VALID: exact package binding and bounded non-circular authorization transition are valid.")
     for message in messages:
         print(f"PILOT_PREFLIGHT_BINDING: {message}")
     print("PILOT_PREFLIGHT_BOUNDARY: this check does not create Evidence Lock, authorize Evidence, or prove sandbox isolation/scientific validity.")
