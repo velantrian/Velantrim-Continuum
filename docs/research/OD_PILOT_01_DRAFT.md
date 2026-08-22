@@ -2,7 +2,7 @@
 
 > **Статус документа:** `DRAFT — NOT ADOPTED`  
 > **Decision ID:** `OD-PILOT-01`  
-> **Версия:** `0.3-draft`  
+> **Версия:** `0.4-draft`  
 > **Authority:** repository owner only
 
 ## 1. Решение
@@ -27,8 +27,21 @@ Pilot остаётся `NOT_AUTHORIZED`, пока одновременно не 
 8. Exact request JSON связан SHA-256 в manifest.
 9. Единственный поддерживаемый execution posture сейчас — `UNCONTROLLED_LOCAL_ADVISORY`.
 10. Evidence Lock остаётся `NOT_CREATED`.
-11. **Отдельный owner-authorization state change** материализует в canonical `project-state.json` значение `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT`, не меняя Evidence/production authority. До такого reviewable state transition caller-supplied manifest не может авторизовать Pilot.
-12. Preconditions перепроверены непосредственно перед запуском официальным `scripts/e0/execute_pilot.py`.
+11. **Отдельный owner-authorization state change** должен одновременно материализовать в canonical `project-state.json`:
+    - `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT`;
+    - `experiment_0_pilot_authorization.status = AUTHORIZED_BOUNDED_PILOT_PACKAGE`;
+    - уникальный `authorization_id`;
+    - exact repository-relative `manifest_path`;
+    - exact `manifest_sha256`.
+12. Generic `AUTHORIZED_BOUNDED_PILOT` без exact package binding должен fail-closed отклоняться.
+13. Preconditions перепроверены непосредственно перед запуском официальным `scripts/e0/execute_pilot.py`.
+
+Текущий canonical state сохраняет:
+
+- `experiment_0_pilot_status = NOT_AUTHORIZED`;
+- `experiment_0_pilot_authorization = null`.
+
+То есть этот PR **не авторизует Pilot** и только подготавливает fail-closed контракт для будущего отдельного owner decision/state transition.
 
 ## 3. Execution posture
 
@@ -64,7 +77,7 @@ Preflight обязан fail-closed отклонять этот posture, пока
 - approved Gold/Oracle path/hash;
 - exact Pilot fixture/scenario IDs;
 - exact request SHA-256;
-- protocol/schema/fixture/evaluator/run-config hashes where applicable to the selected Pilot package;
+- protocol/schema/fixture/evaluator/run-config hashes where applicable;
 - provider/model/settings;
 - credential profile/scope **without secret values**;
 - exact adapter command;
@@ -75,7 +88,7 @@ Preflight обязан fail-closed отклонять этот posture, пока
 - `output_destination = .velantrim-continuum-pilot-runs`;
 - `evidence_lock = {status: NOT_CREATED, sha256: null}`.
 
-The manifest is necessary but **not sufficient authority**. Preflight also requires the canonical project-state authorization described above.
+The manifest is necessary but **not sufficient authority**. Canonical authorization must bind the exact manifest path and exact manifest SHA-256. A caller-created alternate manifest must fail even after the future generic Pilot state becomes authorized.
 
 ## 5. Official execution path
 
@@ -88,12 +101,15 @@ A Pilot run is supported only through:
 Immediately before spawning an adapter, the official endpoint must revalidate:
 
 1. canonical Pilot authorization;
-2. exact manifest structure and Pilot-only scope;
-3. exact HEAD/tree and clean worktree;
-4. human-reference approval validator;
-5. exact request SHA-256.
+2. exact canonical authorization-record → manifest path/SHA-256 binding;
+3. exact manifest structure and Pilot-only scope;
+4. exact HEAD/tree and clean worktree;
+5. human-reference approval validator;
+6. exact request bytes SHA-256.
 
-The endpoint then reserves one attempt under the manifest package hash. `max_runs` is technically enforced by atomic attempt-directory reservation; a failed attempt still consumes a reserved attempt rather than silently allowing retries.
+Manifest and request files must be regular non-symlink files. The request is opened once; the same bytes are hashed, parsed, recorded and passed to the adapter. This avoids hash-then-reopen path races.
+
+The endpoint then reserves one attempt under the exact manifest SHA-256. `max_runs` is technically enforced by atomic attempt-directory reservation; a failed attempt still consumes a reserved attempt rather than silently allowing retries.
 
 ## 6. Output and process containment
 
@@ -101,11 +117,15 @@ Pilot outputs are written only beneath a dedicated sibling directory **outside t
 
 `.velantrim-continuum-pilot-runs/<manifest-sha256>/attempt-NNN/`
 
+The dedicated output root, package root and attempt path must be real directories, not symlinks, and must resolve outside the repository before writes occur.
+
 The caller cannot supply arbitrary response/metrics file paths. Repository authority/reference files therefore are not valid Pilot output targets.
 
-Each attempt records a manifest copy, exact request, reservation, response/metrics when successful, and a terminal result record. Writes use temporary-create + fsync + atomic replace inside the newly reserved attempt directory.
+Each attempt records the exact manifest bytes, exact request bytes, reservation, response/metrics when successful, and a terminal result record. Writes remain bounded to the reserved attempt directory.
 
 The adapter runs in a separate process group/session where supported. Timeout/output-cap/final cleanup terminates the adapter process tree so descendants cannot remain alive after a bounded attempt is declared stopped. This is lifecycle containment, **not sandbox isolation**.
+
+The official executor disables Python bytecode generation before importing internal Pilot modules so normal documented invocation does not create `scripts/e0/__pycache__/` and invalidate its own clean-worktree preflight.
 
 ## 7. Stop rules
 
@@ -113,8 +133,11 @@ Stop immediately if:
 
 - approval validation fails;
 - canonical Pilot authorization state is absent or inconsistent;
+- canonical authorization does not bind the exact manifest path/hash;
+- manifest or request is a symlink/non-regular file;
 - worktree or bound artifact drift is detected;
 - exact request hash differs;
+- output root/package/attempt path is redirected by symlink or resolves inside the repository;
 - an Evidence fixture/scenario is requested;
 - unsupported isolated-runner posture is requested;
 - adapter exceeds timeout or output cap;
@@ -142,12 +165,15 @@ Adoption of OD-PILOT-01 does **not** authorize or create:
 
 ## 9. Owner adoption record
 
-Until this block is explicitly completed by the repository owner **and** a separate reviewable canonical state change records the bounded authorization, status remains `DRAFT — NOT ADOPTED` / `Pilot NOT_AUTHORIZED`.
+Until this block is explicitly completed by the repository owner **and** a separate reviewable canonical state change records the exact bounded package authorization, status remains `DRAFT — NOT ADOPTED` / `Pilot NOT_AUTHORIZED`.
 
 ```text
-I, <GitHub login>, adopt OD-PILOT-01 v0.3.
+I, <GitHub login>, adopt OD-PILOT-01 v0.4.
 
 Authorized bounded Pilot package:
+- authorization_id: <unique ID>;
+- canonical manifest path: <repository-relative path>;
+- canonical manifest SHA-256: <SHA-256>;
 - exact execution head: <SHA>;
 - execution tree: <SHA>;
 - fixtures/scenarios: <PILOT-only IDs>;
