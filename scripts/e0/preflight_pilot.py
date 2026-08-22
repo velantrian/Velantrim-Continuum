@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fail-closed preflight for an explicitly owner-authorized E0 Pilot.
 
-This script does not grant authority. It only verifies that a supplied manifest records an
-already-adopted bounded owner decision and that repository/Pilot inputs are consistent.
+This script does not grant authority. It verifies both a bounded Pilot manifest and the
+canonical repository authorization state before any diagnostic run may proceed.
 """
 from __future__ import annotations
 
@@ -18,10 +18,12 @@ from typing import Any
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 APPROVAL_PATH = "experiments/e0/approval/human-reference-approval.v0.2.json"
+PROJECT_STATE_PATH = "project-state.json"
 CAPTURE_PILOT_PATH = "experiments/e0/fixtures/capture/pilot/fixtures.json"
 TRANSFER_PATH = "experiments/e0/fixtures/transfer/scenarios.json"
 ALLOWED_POSTURES = {"UNCONTROLLED_LOCAL_ADVISORY", "ISOLATED_RUNNER_CONTRACT"}
 FORBIDDEN_SECRET_KEYS = {"api_key", "token", "secret", "password", "credential_secret_value"}
+AUTHORIZED_PILOT_STATE = "AUTHORIZED_BOUNDED_PILOT"
 
 
 class PreflightError(ValueError):
@@ -109,8 +111,32 @@ def evidence_ids(root: Path) -> set[str]:
     return ids
 
 
-def validate_manifest(manifest: dict[str, Any], root: Path, *, check_git: bool = True) -> list[str]:
+def validate_canonical_authorization(root: Path) -> None:
+    state = load_json(root / PROJECT_STATE_PATH)
+    status = state.get("experiment_0_pilot_status")
+    if status != AUTHORIZED_PILOT_STATE:
+        raise PreflightError(
+            f"canonical project state does not authorize Pilot: experiment_0_pilot_status={status!r}; "
+            f"expected {AUTHORIZED_PILOT_STATE!r}"
+        )
+    if state.get("experiment_0_evidence_lock_sha") is not None:
+        raise PreflightError("canonical project state must keep Evidence Lock absent for Pilot")
+    if state.get("experiment_0_evidence_ready") is not False:
+        raise PreflightError("Pilot authorization must not set experiment_0_evidence_ready=true")
+    if state.get("e0c_started") is not False or state.get("e0t_started") is not False:
+        raise PreflightError("Pilot authorization must not mark E0-C/E0-T Evidence started")
+
+
+def validate_manifest(
+    manifest: dict[str, Any],
+    root: Path,
+    *,
+    check_git: bool = True,
+    check_authority_state: bool = True,
+) -> list[str]:
     reject_secret_material(manifest)
+    if check_authority_state:
+        validate_canonical_authorization(root)
     if manifest.get("run_type") != "PILOT" or manifest.get("label") != "PILOT — NOT EVIDENCE":
         raise PreflightError("manifest must be explicitly labelled PILOT — NOT EVIDENCE")
     if manifest.get("owner_decision_id") != "OD-PILOT-01":
@@ -233,7 +259,7 @@ def main() -> int:
     except PreflightError as exc:
         print(f"PILOT_PREFLIGHT_ERROR: {exc}", file=sys.stderr)
         return 1
-    print("PILOT_PREFLIGHT_VALID: owner authorization is recorded and bounded Pilot inputs are consistent.")
+    print("PILOT_PREFLIGHT_VALID: canonical owner authorization is present and bounded Pilot inputs are consistent.")
     for message in messages:
         print(f"PILOT_PREFLIGHT_BINDING: {message}")
     print("PILOT_PREFLIGHT_BOUNDARY: this check does not create Evidence Lock, authorize Evidence, or prove sandbox isolation/scientific validity.")
