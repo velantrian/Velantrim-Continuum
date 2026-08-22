@@ -2,7 +2,7 @@
 
 > **Статус документа:** `DRAFT — NOT ADOPTED`  
 > **Decision ID:** `OD-PILOT-01`  
-> **Версия:** `0.4-draft`  
+> **Версия:** `0.5-draft`  
 > **Authority:** repository owner only
 
 ## 1. Решение
@@ -17,181 +17,166 @@
 
 Pilot остаётся `NOT_AUTHORIZED`, пока одновременно не выполнены все условия:
 
-1. PR #28 merged; authoritative human-approved Gold / Oracle находятся на execution head.
-2. `validate_human_reference_approval.py` проходит на exact execution head.
-3. Historical candidates остаются `AI_PROPOSED_DRAFT`; run использует только approved versioned reference artifacts.
-4. Experiment 0 contract gate и relevant tests проходят на exact execution head.
-5. **Execution worktree clean:** `git status --porcelain` пуст; `HEAD` равен `execution_head_commit` из manifest; нет локальных изменений в approved references, fixtures, protocol, evaluator, prompts/templates или run config.
-6. Выбраны только Pilot fixtures/scenarios. Evidence IDs запрещены.
-7. Владелец явно задаёт provider/model identifier/settings, exact adapter command, repository-relative adapter cwd, environment allowlist, limits и credentials profile/scope. **Секретные значения и API keys в manifest не записываются.**
-8. Exact request JSON связан SHA-256 в manifest.
-9. Единственный поддерживаемый execution posture сейчас — `UNCONTROLLED_LOCAL_ADVISORY`.
+1. PR #28 merged; authoritative human-approved Gold / Oracle сохранены.
+2. `validate_human_reference_approval.py` проходит на runtime head.
+3. Historical candidates остаются `AI_PROPOSED_DRAFT`.
+4. Experiment 0 contracts/tests проходят.
+5. Worktree остаётся strict-clean до adapter spawn.
+6. Выбраны только Pilot fixtures/scenarios; Evidence IDs запрещены.
+7. Владелец задаёт provider/model/settings, exact adapter command, repository-relative cwd, environment allowlist, limits и credential profile/scope без секретных значений.
+8. Exact request bytes связаны SHA-256 в manifest.
+9. Поддерживаемый posture: только `UNCONTROLLED_LOCAL_ADVISORY`.
 10. Evidence Lock остаётся `NOT_CREATED`.
-11. **Отдельный owner-authorization state change** должен одновременно материализовать в canonical `project-state.json`:
-    - `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT`;
-    - `experiment_0_pilot_authorization.status = AUTHORIZED_BOUNDED_PILOT_PACKAGE`;
-    - уникальный `authorization_id`;
-    - exact repository-relative `manifest_path`;
-    - exact `manifest_sha256`.
-12. Generic `AUTHORIZED_BOUNDED_PILOT` без exact package binding должен fail-closed отклоняться.
-13. Preconditions перепроверены непосредственно перед запуском официальным `scripts/e0/execute_pilot.py`.
+11. Future owner authorization использует **non-circular two-stage Git binding**:
+    - manifest фиксирует `authorization_base_commit` и `authorization_base_tree` — последний pre-authorization baseline;
+    - canonical `project-state.json` фиксирует exact `manifest_path`, `manifest_sha256`, тот же base commit/tree и `AUTHORIZED_BOUNDED_PILOT`;
+    - текущий runtime `HEAD` обязан быть base или его descendant;
+    - diff `authorization_base_commit..HEAD` разрешён только для bounded authorization-transition paths: exact manifest, `project-state.json`, `STATUS.md`, `docs/ai/CURRENT_STATE.md`, `docs/research/OD_PILOT_01_DRAFT.md`;
+    - любой runtime/protocol/fixture/reference/code drift в этом переходе fail-closed запрещён.
+12. Фактический runtime HEAD/tree не находятся внутри hash-bound manifest, чтобы исключить self-referential fixed-point. Они вычисляются после проверки transition и записываются в Pilot reservation/result receipt.
+13. Generic `AUTHORIZED_BOUNDED_PILOT` без exact package binding fail-closed отклоняется.
 
-Текущий canonical state сохраняет:
+Текущий canonical state остаётся:
 
 - `experiment_0_pilot_status = NOT_AUTHORIZED`;
 - `experiment_0_pilot_authorization = null`.
 
-То есть этот PR **не авторизует Pilot** и только подготавливает fail-closed контракт для будущего отдельного owner decision/state transition.
+То есть этот PR **не авторизует Pilot**.
 
 ## 3. Execution posture
 
-### Поддерживается сейчас: `UNCONTROLLED_LOCAL_ADVISORY`
-
-Допустим только для diagnostic Pilot без необратимых действий.
-
-Обязательная честная маркировка:
+### Поддерживается: `UNCONTROLLED_LOCAL_ADVISORY`
 
 - `isolation_enforcement = NOT_ENFORCED`
 - `network_isolation = NOT_ENFORCED`
 - `filesystem_isolation = NOT_ENFORCED`
 - `process_isolation = NOT_ENFORCED`
 
-Ограничения network/tools/credentials в этом posture являются **owner/executor obligations**, а не sandbox guarantees.
+Это diagnostic Pilot без production sandbox claims. Purchases, deploy, publication, deletion, production writes и необратимые side effects запрещены.
 
-Запрещены purchases, deploy, publication, deletion, production writes и любые необратимые side effects.
+### Не поддерживается: `ISOLATED_RUNNER_CONTRACT`
 
-### Не поддерживается сейчас: `ISOLATED_RUNNER_CONTRACT`
-
-Preflight обязан fail-closed отклонять этот posture, пока отдельный approved isolation contract/implementation не будет действительно материализован и связан с runner identity. Текущий Pilot-control слой не создаёт sandbox и не утверждает, что он существует.
+Preflight fail-closed отклоняет этот posture до отдельной реальной реализации/контракта.
 
 ## 4. Required Pilot manifest
 
-До запуска нужен immutable-by-convention manifest минимум с:
+Manifest минимум содержит:
 
 - `run_type = PILOT`;
 - `label = PILOT — NOT EVIDENCE`;
 - `owner_decision_id = OD-PILOT-01`;
 - `owner_decision_status = ADOPTED`;
-- exact execution commit/tree;
-- human approval record path/hash;
+- exact `authorization_base_commit`;
+- exact `authorization_base_tree`;
+- human approval path/hash;
 - approved Gold/Oracle path/hash;
-- exact Pilot fixture/scenario IDs;
+- Pilot-only IDs;
 - exact request SHA-256;
-- protocol/schema/fixture/evaluator/run-config hashes where applicable;
 - provider/model/settings;
-- credential profile/scope **without secret values**;
+- credential profile/scope без secret values;
 - exact adapter command;
 - repository-relative adapter cwd;
-- explicit environment allowlist;
-- execution posture;
-- timeout/output-size/max-runs/budget limits;
+- environment allowlist;
+- limits;
 - `output_destination = .velantrim-continuum-pilot-runs`;
 - `evidence_lock = {status: NOT_CREATED, sha256: null}`.
 
-The manifest is necessary but **not sufficient authority**. Canonical authorization must bind the exact manifest path and exact manifest SHA-256. A caller-created alternate manifest must fail even after the future generic Pilot state becomes authorized.
+Manifest necessary but not sufficient authority. Canonical state отдельно hash-bind exact manifest и base identity.
 
 ## 5. Official execution path
 
-A Pilot run is supported only through:
+Только:
 
 `python scripts/e0/execute_pilot.py --manifest <manifest> --request <request>`
 
-`run_adapter.py` is an internal primitive and rejects direct CLI execution.
+`run_adapter.py` остаётся internal-only.
 
-Immediately before spawning an adapter, the official endpoint must revalidate:
+До spawn executor проверяет:
 
-1. canonical Pilot authorization;
-2. exact canonical authorization-record → manifest path/SHA-256 binding;
-3. exact manifest structure and Pilot-only scope;
-4. exact HEAD/tree and clean worktree;
-5. human-reference approval validator;
-6. exact request bytes SHA-256.
+1. canonical Pilot status + exact manifest path/SHA binding;
+2. manifest base commit/tree = canonical base commit/tree;
+3. current HEAD descendant relation к base;
+4. diff base..HEAD содержит только authorization-transition allowlist paths;
+5. strict-clean worktree;
+6. human-reference approval validator;
+7. повторный strict-clean worktree после child validator;
+8. exact request bytes SHA-256.
 
-Manifest and request files must be regular non-symlink files. The request is opened once; the same bytes are hashed, parsed, recorded and passed to the adapter. This avoids hash-then-reopen path races.
+Human-reference child запускается с `python -B` и `PYTHONDONTWRITEBYTECODE=1`, чтобы сам control path не создавал `__pycache__` drift.
 
-The endpoint then reserves one attempt under the exact manifest SHA-256. `max_runs` is technically enforced by atomic attempt-directory reservation; a failed attempt still consumes a reserved attempt rather than silently allowing retries.
+Manifest/request должны быть regular non-symlink files. Request читается один раз; те же bytes хэшируются, парсятся, записываются и передаются adapter.
+
+Фактические `runtime_head_commit` и `runtime_tree` вычисляются после preflight и фиксируются в reservation/result receipt вместе с base identity.
 
 ## 6. Output and process containment
 
-Pilot outputs are written only beneath a dedicated sibling directory **outside the Git repository**:
+Outputs:
 
 `.velantrim-continuum-pilot-runs/<manifest-sha256>/attempt-NNN/`
 
-The dedicated output root, package root and attempt path must be real directories, not symlinks, and must resolve outside the repository before writes occur.
+Output root/package/attempt должны быть реальными directories, не symlink, и оставаться вне repository.
 
-The caller cannot supply arbitrary response/metrics file paths. Repository authority/reference files therefore are not valid Pilot output targets.
-
-Each attempt records the exact manifest bytes, exact request bytes, reservation, response/metrics when successful, and a terminal result record. Writes remain bounded to the reserved attempt directory.
-
-The adapter runs in a separate process group/session where supported. Timeout/output-cap/final cleanup terminates the adapter process tree so descendants cannot remain alive after a bounded attempt is declared stopped. This is lifecycle containment, **not sandbox isolation**.
-
-The official executor disables Python bytecode generation before importing internal Pilot modules so normal documented invocation does not create `scripts/e0/__pycache__/` and invalidate its own clean-worktree preflight.
+`max_runs` технически ограничивается atomic attempt reservation. Adapter работает в отдельной process group/session; timeout/output-cap/final cleanup завершают descendants. Это lifecycle containment, не sandbox.
 
 ## 7. Stop rules
 
-Stop immediately if:
+Fail closed если:
 
 - approval validation fails;
-- canonical Pilot authorization state is absent or inconsistent;
-- canonical authorization does not bind the exact manifest path/hash;
-- manifest or request is a symlink/non-regular file;
-- worktree or bound artifact drift is detected;
-- exact request hash differs;
-- output root/package/attempt path is redirected by symlink or resolves inside the repository;
-- an Evidence fixture/scenario is requested;
-- unsupported isolated-runner posture is requested;
-- adapter exceeds timeout or output cap;
-- adapter returns malformed JSON or non-zero exit;
-- `max_runs` is exhausted;
-- unknown adapter behavior or unapproved side effect appears;
-- production credentials or irreversible external writes are observed;
-- a semantic change to protocol/fixture/Gold/Oracle is required.
-
-Any semantic correction goes through a separate bounded PR. Pilot outputs remain Pilot-only.
+- canonical Pilot authorization отсутствует/не совпадает с package;
+- base commit/tree не совпадают;
+- runtime HEAD не descendant base;
+- authorization transition затрагивает любой path вне bounded allowlist;
+- worktree dirty до или после child validator;
+- manifest/request symlink/non-regular;
+- request hash mismatch;
+- output path symlink/escape;
+- Evidence ID requested;
+- unsupported posture;
+- timeout/output cap/nonzero/malformed adapter output;
+- max_runs exhausted;
+- semantic correction требуется для protocol/fixture/Gold/Oracle.
 
 ## 8. Non-authorizations
 
-Adoption of OD-PILOT-01 does **not** authorize or create:
+Даже будущая adoption OD-PILOT-01 не создаёт автоматически:
 
 - Evidence Lock;
 - E0-C Evidence;
 - E0-T Evidence;
-- scientific architecture conclusions;
+- scientific conclusions;
 - production runtime/architecture;
 - event sourcing requirement;
 - ecosystem integration.
 
-`Human Reference Approved ≠ Pilot Evidence ≠ Evidence Lock ≠ Evidence Authorization ≠ Production Authorization`.
+`Human Reference Approved ≠ Pilot ≠ Evidence ≠ Production Authorization`.
 
 ## 9. Owner adoption record
 
-Until this block is explicitly completed by the repository owner **and** a separate reviewable canonical state change records the exact bounded package authorization, status remains `DRAFT — NOT ADOPTED` / `Pilot NOT_AUTHORIZED`.
+До отдельной explicit owner adoption + canonical authorization transition статус остаётся `DRAFT — NOT ADOPTED` / `Pilot NOT_AUTHORIZED`.
 
 ```text
-I, <GitHub login>, adopt OD-PILOT-01 v0.4.
+I, <GitHub login>, adopt OD-PILOT-01 v0.5.
 
 Authorized bounded Pilot package:
 - authorization_id: <unique ID>;
-- canonical manifest path: <repository-relative path>;
+- authorization_base_commit: <pre-authorization SHA>;
+- authorization_base_tree: <tree SHA>;
+- canonical manifest path: <repository-relative path under experiments/e0/pilot/>;
 - canonical manifest SHA-256: <SHA-256>;
-- exact execution head: <SHA>;
-- execution tree: <SHA>;
 - fixtures/scenarios: <PILOT-only IDs>;
-- exact request SHA-256: <SHA-256>;
+- request SHA-256: <SHA-256>;
 - approved reference paths/hashes: <paths + SHA-256>;
 - provider/model/settings: <details>;
 - credential profile/scope: <reference only; no secrets>;
-- adapter command: <exact command>;
-- adapter cwd: <repository-relative path>;
-- environment allowlist: <names only>;
+- adapter command/cwd/environment allowlist: <details>;
 - timeout/output cap/max runs/budget: <limits>;
 - execution posture: UNCONTROLLED_LOCAL_ADVISORY;
-- output destination: .velantrim-continuum-pilot-runs;
-- incident contact: <identity>.
+- output destination: .velantrim-continuum-pilot-runs.
 
-Pilot remains `PILOT — NOT EVIDENCE`.
-Evidence Lock remains `NOT_CREATED`.
-E0-C/E0-T Evidence and production authority remain NOT_AUTHORIZED.
+Pilot remains PILOT — NOT EVIDENCE.
+Evidence Lock remains NOT_CREATED.
+E0-C/E0-T and production remain NOT_AUTHORIZED.
 
 UTC timestamp: <YYYY-MM-DDTHH:MM:SSZ>
 ```
