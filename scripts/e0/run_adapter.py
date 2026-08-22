@@ -105,15 +105,14 @@ def bounded_run(
             deadline = time.monotonic() + timeout_seconds
             while proc.poll() is None:
                 if time.monotonic() >= deadline:
-                    terminate_process_tree(proc)
                     raise AdapterError(f"adapter timeout after {timeout_seconds}s")
                 if stdout_file.tell() > max_output_bytes or stderr_file.tell() > max_output_bytes:
-                    terminate_process_tree(proc)
                     raise AdapterError(f"adapter output exceeded {max_output_bytes} bytes")
                 time.sleep(0.02)
         finally:
-            if proc.poll() is None:
-                terminate_process_tree(proc)
+            # Always clean the process group/session, even if the immediate adapter exited,
+            # so a background descendant cannot outlive a declared bounded attempt.
+            terminate_process_tree(proc)
 
         if stdout_file.tell() > max_output_bytes or stderr_file.tell() > max_output_bytes:
             raise AdapterError(f"adapter output exceeded {max_output_bytes} bytes")
