@@ -6,6 +6,10 @@ Velantrim Continuum is a research-first repository. Research artifacts are inten
 
 - [`IDPS_EXPERIMENT_0_PREREGISTRATION.md`](IDPS_EXPERIMENT_0_PREREGISTRATION.md) — canonical Experiment 0 protocol: E0-C Capture Isolation first, E0-T Transfer Isolation second, followed by mandatory Architecture Reassessment.
 
+## Application / future research mappings
+
+- [`SMART_CONTEXT_HANDOFF_MAPPING.md`](SMART_CONTEXT_HANDOFF_MAPPING.md) — non-canonical mapping of Smart Context / Context Observer / successor handoff to Continuum's Capture/Transfer failure model. It is not an Experiment 0 change, milestone selection, Pilot authorization, Evidence authorization, or ecosystem-integration approval.
+
 ## Research-facing navigation
 
 - Human deep overview: [`../../RESEARCH_OVERVIEW.md`](../../RESEARCH_OVERVIEW.md)
