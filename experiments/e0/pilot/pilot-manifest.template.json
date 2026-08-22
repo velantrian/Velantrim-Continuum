@@ -5,8 +5,8 @@
   "owner_decision_status": "DRAFT — NOT ADOPTED",
   "owner_github_login": "<owner-login>",
   "owner_adopted_at": "<UTC timestamp only after explicit adoption>",
-  "execution_head_commit": "<40-char SHA>",
-  "execution_tree": "<40-char tree SHA>",
+  "authorization_base_commit": "<40-char pre-authorization base commit SHA>",
+  "authorization_base_tree": "<40-char tree SHA for authorization_base_commit>",
   "human_approval": {
     "path": "experiments/e0/approval/human-reference-approval.v0.2.json",
     "sha256": "<sha256>"
