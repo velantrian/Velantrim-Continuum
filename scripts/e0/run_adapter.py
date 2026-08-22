@@ -1,19 +1,93 @@
 #!/usr/bin/env python3
+"""Internal bounded adapter primitive for Experiment 0 Pilot execution.
+
+This module is not an authorization boundary and must not be invoked directly. The only
+supported Pilot execution entrypoint is execute_pilot.py, which performs fail-closed
+manifest, canonical-state, and approval validation before calling bounded_run().
+"""
 from __future__ import annotations
 
-import argparse
-import json
 import os
-import shlex
+import signal
 import subprocess
 import tempfile
 import time
 from pathlib import Path
 
 
-def bounded_run(command: list[str], *, request_text: str, cwd: Path, env: dict[str, str], timeout_seconds: int, max_output_bytes: int) -> tuple[int, str, str, float]:
+class AdapterError(RuntimeError):
+    pass
+
+
+def terminate_process_tree(proc: subprocess.Popen[str]) -> None:
+    """Terminate the adapter process tree with best available platform semantics."""
+    if os.name == "posix":
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = time.monotonic() + 0.5
+        while time.monotonic() < deadline and proc.poll() is None:
+            time.sleep(0.02)
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            pass
+        return
+
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        try:
+            proc.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        return
+
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+
+def bounded_run(
+    command: list[str],
+    *,
+    request_text: str,
+    cwd: Path,
+    env: dict[str, str],
+    timeout_seconds: int,
+    max_output_bytes: int,
+) -> tuple[int, str, str, float]:
+    if not command:
+        raise AdapterError("adapter command is empty")
+    if timeout_seconds <= 0:
+        raise AdapterError("timeout_seconds must be > 0")
+    if max_output_bytes <= 0:
+        raise AdapterError("max_output_bytes must be > 0")
+    if not cwd.is_dir():
+        raise AdapterError(f"adapter cwd is not a directory: {cwd}")
+
     started = time.perf_counter()
     with tempfile.TemporaryFile(mode="w+b") as stdout_file, tempfile.TemporaryFile(mode="w+b") as stderr_file:
+        popen_kwargs: dict[str, object] = {}
+        if os.name == "posix":
+            popen_kwargs["start_new_session"] = True
+        elif os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
         proc = subprocess.Popen(
             command,
             cwd=cwd,
@@ -22,6 +96,7 @@ def bounded_run(command: list[str], *, request_text: str, cwd: Path, env: dict[s
             stdout=stdout_file,
             stderr=stderr_file,
             text=True,
+            **popen_kwargs,
         )
         try:
             assert proc.stdin is not None
@@ -30,98 +105,31 @@ def bounded_run(command: list[str], *, request_text: str, cwd: Path, env: dict[s
             deadline = time.monotonic() + timeout_seconds
             while proc.poll() is None:
                 if time.monotonic() >= deadline:
-                    proc.kill()
-                    proc.wait()
-                    raise SystemExit(f"adapter timeout after {timeout_seconds}s")
+                    terminate_process_tree(proc)
+                    raise AdapterError(f"adapter timeout after {timeout_seconds}s")
                 if stdout_file.tell() > max_output_bytes or stderr_file.tell() > max_output_bytes:
-                    proc.kill()
-                    proc.wait()
-                    raise SystemExit(f"adapter output exceeded {max_output_bytes} bytes")
+                    terminate_process_tree(proc)
+                    raise AdapterError(f"adapter output exceeded {max_output_bytes} bytes")
                 time.sleep(0.02)
         finally:
             if proc.poll() is None:
-                proc.kill()
-                proc.wait()
+                terminate_process_tree(proc)
+
         if stdout_file.tell() > max_output_bytes or stderr_file.tell() > max_output_bytes:
-            raise SystemExit(f"adapter output exceeded {max_output_bytes} bytes")
+            raise AdapterError(f"adapter output exceeded {max_output_bytes} bytes")
         stdout_file.seek(0)
         stderr_file.seek(0)
         stdout = stdout_file.read(max_output_bytes + 1).decode("utf-8", errors="replace")
         stderr = stderr_file.read(max_output_bytes + 1).decode("utf-8", errors="replace")
+
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     return proc.returncode, stdout, stderr, elapsed_ms
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run one bounded external model/worker adapter over stdin/stdout JSON. This is not a sandbox.")
-    parser.add_argument("--adapter-cmd", required=True, help="Command executed without shell expansion.")
-    parser.add_argument("--request", required=True)
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--metrics-output", required=True)
-    parser.add_argument("--cwd", required=True, help="Explicit adapter working directory.")
-    parser.add_argument("--timeout-seconds", type=int, required=True)
-    parser.add_argument("--max-output-bytes", type=int, required=True)
-    parser.add_argument(
-        "--inherit-env",
-        action="append",
-        default=[],
-        metavar="NAME",
-        help="Environment variable to pass through. May be repeated. PATH is always retained if present.",
+    raise SystemExit(
+        "run_adapter.py is an internal helper and cannot execute a Pilot directly; use scripts/e0/execute_pilot.py with an authorized manifest"
     )
-    args = parser.parse_args()
-
-    if args.timeout_seconds <= 0:
-        raise SystemExit("--timeout-seconds must be > 0")
-    if args.max_output_bytes <= 0:
-        raise SystemExit("--max-output-bytes must be > 0")
-
-    cwd = Path(args.cwd).resolve()
-    if not cwd.is_dir():
-        raise SystemExit(f"adapter cwd is not a directory: {cwd}")
-
-    request = json.loads(Path(args.request).read_text(encoding="utf-8"))
-    env: dict[str, str] = {}
-    if "PATH" in os.environ:
-        env["PATH"] = os.environ["PATH"]
-    for name in args.inherit_env:
-        if not name or "=" in name:
-            raise SystemExit(f"invalid --inherit-env name: {name!r}")
-        if name in os.environ:
-            env[name] = os.environ[name]
-
-    returncode, stdout, stderr, elapsed_ms = bounded_run(
-        shlex.split(args.adapter_cmd),
-        request_text=json.dumps(request, ensure_ascii=False),
-        cwd=cwd,
-        env=env,
-        timeout_seconds=args.timeout_seconds,
-        max_output_bytes=args.max_output_bytes,
-    )
-    if returncode != 0:
-        raise SystemExit(f"adapter failed ({returncode}): {stderr.strip()}")
-    try:
-        response = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        raise SystemExit(f"adapter stdout is not JSON: {exc}") from exc
-
-    Path(args.output).write_text(json.dumps(response, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    metrics = {
-        "latency_ms": {"provenance": "MEASURED", "value": elapsed_ms, "unit": "ms"},
-        "model_calls": {"provenance": "MEASURED", "value": 1, "unit": "calls"},
-        "tool_calls": {"provenance": "UNAVAILABLE", "value": None, "unit": "calls"},
-        "input_tokens": {"provenance": "UNAVAILABLE", "value": None, "unit": "tokens"},
-        "output_tokens": {"provenance": "UNAVAILABLE", "value": None, "unit": "tokens"},
-        "cost": {"provenance": "UNAVAILABLE", "value": None, "unit": None},
-        "execution_limits": {
-            "timeout_seconds": args.timeout_seconds,
-            "max_output_bytes": args.max_output_bytes,
-            "cwd": str(cwd),
-            "inherited_env_names": sorted(set((["PATH"] if "PATH" in env else []) + args.inherit_env)),
-            "sandbox": False,
-        },
-    }
-    Path(args.metrics_output).write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return 0
 
 
 if __name__ == "__main__":
