@@ -2,58 +2,139 @@
 """Single supported execution endpoint for an explicitly authorized Experiment 0 Pilot.
 
 The command validates canonical authorization, the exact Pilot manifest, human approval,
-Git head/tree/worktree, and the request hash immediately before reserving one bounded
+Git head/tree/worktree, and exact request bytes immediately before reserving one bounded
 attempt and spawning the internal adapter primitive. Pilot artifacts are written only to
 a dedicated sibling directory outside the Git repository.
 """
 from __future__ import annotations
+
+import sys
+sys.dont_write_bytecode = True
 
 import argparse
 import hashlib
 import json
 import os
 import shlex
-import sys
+import stat
 from pathlib import Path
 from typing import Any
 
-from preflight_pilot import PILOT_OUTPUT_DESTINATION, PreflightError, load_json, sha256_file, validate_human_approval, validate_manifest
+from preflight_pilot import (
+    PILOT_OUTPUT_DESTINATION,
+    PreflightError,
+    sha256_bytes,
+    validate_human_approval,
+    validate_manifest,
+)
 from run_adapter import AdapterError, bounded_run
 
 
-def atomic_write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    parent = path.parent
+    if parent.is_symlink():
+        raise PreflightError(f"Pilot output parent must not be a symlink: {parent}")
+    parent.mkdir(parents=True, exist_ok=True)
+    resolved_parent = parent.resolve()
+    if resolved_parent != parent:
+        raise PreflightError(f"Pilot output parent resolved unexpectedly: {parent}")
     temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
-    payload = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
     try:
-        with temporary.open("x", encoding="utf-8") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            raise
         os.replace(temporary, path)
     finally:
-        if temporary.exists():
+        try:
             temporary.unlink()
+        except FileNotFoundError:
+            pass
 
 
-def manifest_digest(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def atomic_write_json(path: Path, value: Any) -> None:
+    atomic_write_bytes(path, (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
 
 
-def reserve_attempt(package_root: Path, max_runs: int) -> tuple[int, Path]:
-    package_root.mkdir(parents=True, exist_ok=True)
+def read_regular_file_once(path: Path, *, label: str) -> bytes:
+    if path.is_symlink():
+        raise PreflightError(f"{label} must not be a symlink")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise PreflightError(f"cannot open {label}: {exc}") from exc
+    try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise PreflightError(f"{label} must be a regular file")
+        with os.fdopen(fd, "rb", closefd=False) as handle:
+            return handle.read()
+    finally:
+        os.close(fd)
+
+
+def parse_json_object(payload: bytes, *, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PreflightError(f"invalid JSON in {label}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise PreflightError(f"{label} must contain a JSON object")
+    return value
+
+
+def ensure_output_root(root: Path) -> Path:
+    lexical = root.parent / PILOT_OUTPUT_DESTINATION
+    if lexical.exists() and lexical.is_symlink():
+        raise PreflightError("Pilot output root must not be a symlink")
+    lexical.mkdir(mode=0o700, exist_ok=True)
+    if lexical.is_symlink():
+        raise PreflightError("Pilot output root became a symlink")
+    resolved = lexical.resolve()
+    if resolved == root or root in resolved.parents:
+        raise PreflightError("Pilot output root resolves inside the Git repository")
+    if resolved != lexical:
+        raise PreflightError("Pilot output root must resolve to its dedicated sibling path")
+    return resolved
+
+
+def reserve_attempt(output_root: Path, package_hash: str, max_runs: int) -> tuple[int, Path]:
+    package_root = output_root / package_hash
+    if package_root.exists() and package_root.is_symlink():
+        raise PreflightError("Pilot package root must not be a symlink")
+    package_root.mkdir(mode=0o700, exist_ok=True)
+    if package_root.is_symlink() or package_root.resolve() != package_root:
+        raise PreflightError("Pilot package root must remain a real directory")
     for attempt in range(1, max_runs + 1):
         attempt_dir = package_root / f"attempt-{attempt:03d}"
         try:
-            attempt_dir.mkdir()
+            attempt_dir.mkdir(mode=0o700)
         except FileExistsError:
+            if attempt_dir.is_symlink():
+                raise PreflightError("Pilot attempt path must not be a symlink")
             continue
+        if attempt_dir.is_symlink() or attempt_dir.resolve() != attempt_dir:
+            raise PreflightError("Pilot attempt directory must remain a real directory")
         return attempt, attempt_dir
     raise PreflightError(f"Pilot max_runs exhausted: {max_runs} attempt(s) already reserved")
 
 
 def safe_adapter_cwd(root: Path, relative: str) -> Path:
-    candidate = (root / relative).resolve()
+    lexical = root / relative
+    if lexical.is_symlink():
+        raise PreflightError("adapter_cwd must not be a symlink")
+    candidate = lexical.resolve()
     if candidate != root and root not in candidate.parents:
         raise PreflightError("adapter_cwd resolves outside repository")
     if not candidate.is_dir():
@@ -84,35 +165,38 @@ def main() -> int:
 
     attempt_dir: Path | None = None
     try:
-        manifest = load_json(manifest_path)
+        manifest_bytes = read_regular_file_once(manifest_path, label="Pilot manifest")
+        manifest = parse_json_object(manifest_bytes, label="Pilot manifest")
+        manifest_sha = sha256_bytes(manifest_bytes)
 
         # Authority and drift are checked immediately before any attempt is reserved.
-        validate_manifest(manifest, root, check_git=True, check_authority_state=True)
+        validate_manifest(
+            manifest,
+            root,
+            manifest_path=manifest_path,
+            manifest_sha256=manifest_sha,
+            check_git=True,
+            check_authority_state=True,
+        )
         validate_human_approval(root)
 
+        request_bytes = read_regular_file_once(request_path, label="Pilot request")
         expected_request_hash = manifest.get("request_sha256")
-        if not isinstance(expected_request_hash, str) or len(expected_request_hash) != 64:
-            raise PreflightError("request_sha256 must be present in the Pilot manifest")
-        if not request_path.is_file() or sha256_file(request_path) != expected_request_hash:
-            raise PreflightError("request file SHA-256 does not match authorized Pilot manifest")
-        request = load_json(request_path)
+        if not isinstance(expected_request_hash, str) or sha256_bytes(request_bytes) != expected_request_hash:
+            raise PreflightError("request bytes SHA-256 do not match authorized Pilot manifest")
+        request = parse_json_object(request_bytes, label="Pilot request")
 
         limits = manifest["limits"]
         max_runs = limits["max_runs"]
-        output_root = root.parent / PILOT_OUTPUT_DESTINATION
-        if output_root == root or root in output_root.parents:
-            raise PreflightError("Pilot output root must be outside the Git repository")
+        output_root = ensure_output_root(root)
+        attempt_number, attempt_dir = reserve_attempt(output_root, manifest_sha, max_runs)
 
-        package_hash = manifest_digest(manifest_path)
-        package_root = output_root / package_hash
-        attempt_number, attempt_dir = reserve_attempt(package_root, max_runs)
-
-        atomic_write_json(attempt_dir / "manifest.json", manifest)
-        atomic_write_json(attempt_dir / "request.json", request)
+        atomic_write_bytes(attempt_dir / "manifest.json", manifest_bytes)
+        atomic_write_bytes(attempt_dir / "request.json", request_bytes)
         atomic_write_json(
             attempt_dir / "reservation.json",
             {
-                "package_sha256": package_hash,
+                "package_sha256": manifest_sha,
                 "attempt": attempt_number,
                 "max_runs": max_runs,
                 "status": "RESERVED",
@@ -124,7 +208,7 @@ def main() -> int:
         env = build_child_env(manifest["environment_allowlist"])
         returncode, stdout, stderr, elapsed_ms = bounded_run(
             shlex.split(manifest["adapter_command"]),
-            request_text=json.dumps(request, ensure_ascii=False),
+            request_text=request_bytes.decode("utf-8"),
             cwd=cwd,
             env=env,
             timeout_seconds=limits["timeout_seconds"],
@@ -160,16 +244,16 @@ def main() -> int:
             {
                 "status": "COMPLETED",
                 "label": "PILOT — NOT EVIDENCE",
-                "package_sha256": package_hash,
+                "package_sha256": manifest_sha,
                 "attempt": attempt_number,
-                "request_sha256": sha256_file(attempt_dir / "request.json"),
-                "response_sha256": sha256_file(attempt_dir / "response.json"),
-                "metrics_sha256": sha256_file(attempt_dir / "metrics.json"),
+                "request_sha256": sha256_bytes(request_bytes),
+                "response_sha256": sha256_bytes((json.dumps(response, ensure_ascii=False, indent=2) + "\n").encode("utf-8")),
+                "metrics_sha256": sha256_bytes((json.dumps(metrics, ensure_ascii=False, indent=2) + "\n").encode("utf-8")),
             },
         )
         print(f"PILOT_EXECUTION_COMPLETED: {attempt_dir}")
         return 0
-    except (PreflightError, AdapterError) as exc:
+    except (PreflightError, AdapterError, OSError) as exc:
         if attempt_dir is not None:
             try:
                 atomic_write_json(
