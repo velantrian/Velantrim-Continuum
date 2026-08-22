@@ -26,7 +26,8 @@ Pilot остаётся `NOT_AUTHORIZED`, пока одновременно не 
 7. Владелец явно задаёт provider/model identifier/settings, adapter command, limits, output destination и credentials profile/scope. **Секретные значения и API keys в manifest не записываются.**
 8. Выбран execution posture.
 9. Evidence Lock остаётся `NOT_CREATED`.
-10. Preconditions перепроверены непосредственно перед запуском.
+10. **Отдельный owner-authorization state change** материализует в canonical `project-state.json` значение `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT`, не меняя Evidence/production authority. До такого reviewable state transition caller-supplied manifest не может авторизовать Pilot.
+11. Preconditions перепроверены непосредственно перед запуском.
 
 ## 3. Execution posture
 
@@ -69,11 +70,14 @@ Pilot остаётся `NOT_AUTHORIZED`, пока одновременно не 
 - output destination;
 - `evidence_lock = {status: NOT_CREATED, sha256: null}`.
 
+The manifest is necessary but **not sufficient authority**. Preflight also requires the canonical project-state authorization described above.
+
 ## 5. Stop rules
 
 Stop immediately if:
 
 - approval validation fails;
+- canonical Pilot authorization state is absent or inconsistent;
 - worktree or bound artifact drift is detected;
 - an Evidence fixture/scenario is requested;
 - adapter exceeds timeout or output cap;
@@ -100,7 +104,7 @@ Adoption of OD-PILOT-01 does **not** authorize or create:
 
 ## 7. Owner adoption record
 
-Until this block is explicitly completed by the repository owner, status remains `DRAFT — NOT ADOPTED`.
+Until this block is explicitly completed by the repository owner **and** a separate reviewable canonical state change records the bounded authorization, status remains `DRAFT — NOT ADOPTED` / `Pilot NOT_AUTHORIZED`.
 
 ```text
 I, <GitHub login>, adopt OD-PILOT-01 v0.2.
