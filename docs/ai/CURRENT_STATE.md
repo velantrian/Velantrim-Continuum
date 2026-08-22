@@ -20,6 +20,7 @@ Selected semantic machine-readable values live in [`project-state.json`](../../p
 - Approved Transfer Oracle: **`experiments/e0/oracle/approved/transfer-oracle.v0.1.json` — HUMAN_APPROVED**.
 - Approval provenance: **`experiments/e0/approval/human-reference-approval.v0.2.json`**.
 - Harness-validation Pilot: **NOT_AUTHORIZED / not run**.
+- Canonical Pilot package authorization: **`null` — no exact manifest path/SHA is authorized**.
 - Evidence readiness: **false**.
 - Evidence Lock: **not created**.
 - E0-C evidence: **not started / not authorized**.
@@ -36,11 +37,12 @@ Selected semantic machine-readable values live in [`project-state.json`](../../p
 2. Preserve the human-approved v0.1 Capture Gold and Transfer Oracle plus the v0.2 approval provenance as the authoritative Experiment 0 human reference.
 3. Keep the historical candidate artifacts unchanged as `AI_PROPOSED_DRAFT`; approval does not rewrite their history.
 4. **STOP at the Pilot authorization boundary.** Human-reference approval does not itself authorize `PILOT — NOT EVIDENCE`.
-5. Only after a separate owner GO may a Pilot run occur, and every Pilot output must remain explicitly labelled `PILOT — NOT EVIDENCE`.
-6. After a separately authorized Pilot: fix Pilot defects; if locked semantics change, version/review before lock.
-7. Evidence Lock may be created only after its own readiness conditions are met; it is currently `NOT_CREATED`.
-8. **STOP.** E0-C Evidence requires separate authorization.
-9. Later: E0-C Evidence → Capture analysis → E0-T Evidence → Transfer analysis → mandatory Architecture Reassessment.
+5. A future bounded Pilot requires a separate owner GO, canonical `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT`, and a canonical authorization record binding the exact approved manifest path and SHA-256. The current authorization slot remains `null`.
+6. Only after those separate reviewable changes may a Pilot run occur, and every Pilot output must remain explicitly labelled `PILOT — NOT EVIDENCE`.
+7. After a separately authorized Pilot: fix Pilot defects; if locked semantics change, version/review before lock.
+8. Evidence Lock may be created only after its own readiness conditions are met; it is currently `NOT_CREATED`.
+9. **STOP.** E0-C Evidence requires separate authorization.
+10. Later: E0-C Evidence → Capture analysis → E0-T Evidence → Transfer analysis → mandatory Architecture Reassessment.
 
 ## Review and approval binding checkpoint
 
@@ -60,6 +62,7 @@ The approval record additionally binds every reviewed path's Git mode, Git blob 
 Do not claim that:
 
 - human-reference approval authorizes Pilot;
+- existence of the canonical Pilot package-authorization field authorizes Pilot;
 - unit/regression tests are an Experiment 0 Pilot;
 - green CI is scientific validity;
 - approved Gold / Oracle are Evidence;
@@ -76,6 +79,7 @@ Do not claim that:
 
 - GitHub lifecycle facts → verify live GitHub.
 - Semantic project state / authorization flags → [`project-state.json`](../../project-state.json).
+- A future Pilot authorization must bind both the canonical Pilot status and an exact repository manifest path/SHA-256; neither can substitute for the other.
 - Experiment semantics → canonical preregistration.
 - Human reference approval → `experiments/e0/approval/human-reference-approval.v0.2.json` plus the exact Issue #9 human decision record.
 - Capture association measurement semantics → [`E0_CORRESPONDENCE_LAW_V0_3.md`](../research/E0_CORRESPONDENCE_LAW_V0_3.md).
