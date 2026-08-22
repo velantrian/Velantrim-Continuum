@@ -21,6 +21,7 @@ def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -189,7 +190,7 @@ class RunAdapterTests(unittest.TestCase):
         source = "import json,os; print(json.dumps({'leaked': os.getenv('VELANTRIM_TEST_SECRET')}))"
         returncode, output, _, _ = self.bounded(source)
         self.assertEqual(returncode, 0)
-        self.assertIn('"leaked": null', output)
+        self.assertIn('\"leaked\": null', output)
 
     @unittest.skipUnless(os.name == "posix", "POSIX process-group regression")
     def test_timeout_kills_descendant_process_group(self):
