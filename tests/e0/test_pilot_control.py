@@ -65,40 +65,58 @@ def valid_manifest() -> dict:
     }
 
 
+def validate_structure(manifest: dict):
+    return preflight.validate_manifest(
+        manifest,
+        ROOT,
+        check_git=False,
+        check_authority_state=False,
+    )
+
+
 class PilotPreflightTests(unittest.TestCase):
-    def test_valid_bounded_manifest_passes_without_git_runtime_check(self):
-        messages = preflight.validate_manifest(valid_manifest(), ROOT, check_git=False)
+    def test_valid_bounded_manifest_passes_structural_validation(self):
+        messages = validate_structure(valid_manifest())
         self.assertTrue(any(item.startswith("pilot_ids=") for item in messages))
+
+    def test_canonical_project_state_blocks_pilot_before_owner_authorization(self):
+        with self.assertRaisesRegex(preflight.PreflightError, "canonical project state does not authorize Pilot"):
+            preflight.validate_manifest(
+                valid_manifest(),
+                ROOT,
+                check_git=False,
+                check_authority_state=True,
+            )
 
     def test_draft_owner_decision_fails_closed(self):
         manifest = valid_manifest()
         manifest["owner_decision_status"] = "DRAFT — NOT ADOPTED"
         with self.assertRaisesRegex(preflight.PreflightError, "not authorized"):
-            preflight.validate_manifest(manifest, ROOT, check_git=False)
+            validate_structure(manifest)
 
     def test_evidence_fixture_is_forbidden(self):
         manifest = valid_manifest()
         manifest["fixture_or_scenario_ids"] = ["T-EVIDENCE-01"]
         with self.assertRaisesRegex(preflight.PreflightError, "Evidence fixture/scenario"):
-            preflight.validate_manifest(manifest, ROOT, check_git=False)
+            validate_structure(manifest)
 
     def test_secret_value_field_is_forbidden(self):
         manifest = valid_manifest()
         manifest["credentials"]["api_key"] = "do-not-store-this"
         with self.assertRaisesRegex(preflight.PreflightError, "secret-bearing field"):
-            preflight.validate_manifest(manifest, ROOT, check_git=False)
+            validate_structure(manifest)
 
     def test_uncontrolled_posture_cannot_claim_isolation(self):
         manifest = valid_manifest()
         manifest["isolation"]["network_isolation"] = "ENFORCED"
         with self.assertRaisesRegex(preflight.PreflightError, "NOT_ENFORCED"):
-            preflight.validate_manifest(manifest, ROOT, check_git=False)
+            validate_structure(manifest)
 
     def test_evidence_lock_must_remain_not_created(self):
         manifest = valid_manifest()
         manifest["evidence_lock"] = {"status": "CREATED", "sha256": "c" * 64}
         with self.assertRaisesRegex(preflight.PreflightError, "Evidence Lock NOT_CREATED"):
-            preflight.validate_manifest(manifest, ROOT, check_git=False)
+            validate_structure(manifest)
 
 
 class RunAdapterTests(unittest.TestCase):
@@ -135,7 +153,7 @@ class RunAdapterTests(unittest.TestCase):
             return proc, output.read_text(encoding="utf-8") if output.exists() else None, json.loads(metrics.read_text(encoding="utf-8")) if metrics.exists() else None
 
     def test_adapter_success_records_limits_and_no_sandbox_claim(self):
-        proc, output, metrics = self.run_adapter("import json,sys; print(json.dumps({'ok': True}))")
+        proc, output, metrics = self.run_adapter("import json; print(json.dumps({'ok': True}))")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn('"ok": true', output)
         self.assertFalse(metrics["execution_limits"]["sandbox"])
