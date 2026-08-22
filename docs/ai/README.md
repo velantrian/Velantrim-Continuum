@@ -17,7 +17,7 @@ Do **not** reconstruct current project truth from the human-facing README alone.
 7. Task-specific fixtures, evaluators, review/approval records, results or evidence when they exist.
 8. `RESEARCH_OVERVIEW.md` and `README.md` for human-oriented conceptual context.
 
-> **DO NOT AUTO-SELECT NEXT MILESTONE.** Audit order, an open Issue, a successful harness check, a ready review packet, or a future-work entry is not implementation/evidence/runtime authorization.
+> **DO NOT AUTO-SELECT NEXT MILESTONE.** Audit order, an open Issue, a successful harness check, an approved human reference, or a future-work entry is not implementation/evidence/runtime authorization.
 
 ## Authority model
 
@@ -67,11 +67,12 @@ Never infer any of the following without explicit evidence:
 - Continuum is already approved for integration into Titan, Crystal, Native Kernel or Mentaury;
 - `READY_FOR_HUMAN_ATTESTATION` means `HUMAN_APPROVED`;
 - a generic instruction to continue/finish work is item-level human Gold/Oracle review;
+- human-reference approval means Pilot authorization;
 - Pilot means Evidence or Evidence Lock means Evidence authorization.
 
 ## Current canonical sequence
 
-Fresh repository state must still be verified live. At the 2026-08-17 audit checkpoint the bounded program is:
+Fresh repository state must still be verified live. The bounded program is now:
 
 ```text
 Research foundation                     ✅ merged
@@ -80,29 +81,31 @@ Harness-readiness milestone             ✅ selected / ACTIVE
 Preregistration hardening               ✅ merged
 Schemas / F1–F8 / transfer fixtures     ✅ merged
 Deterministic evaluator / E0 harness     ✅ implemented and CI-validated
-Human-review engineering preparation    ✅ READY_FOR_HUMAN_ATTESTATION
-Human semantic Gold / Oracle approval    ⛔ NOT GRANTED
-Pilot — NOT EVIDENCE                     ⛔ not run
+Human-review engineering preparation    ✅ complete
+Human semantic Gold / Oracle approval    ✅ 14 / 14 ACCEPT
+Authoritative Gold / Oracle materialized ✅ versioned v0.1 references + v0.2 approval record
+Human-reference gate                     ✅ CLOSED
+Pilot — NOT EVIDENCE                     ⛔ NOT_AUTHORIZED / not run
 Evidence Lock                            ❌ none
-E0-C evidence                            ❌ not started / not authorized by docs
+E0-C evidence                            ❌ not started / not authorized
 Capture analysis                         ❌ not reached
-E0-T evidence                            ❌ not started / not authorized by docs
+E0-T evidence                            ❌ not started / not authorized
 Transfer analysis                        ❌ not reached
 Architecture Reassessment               ❌ not reached
 Production architecture                 ❌ not frozen
-Production runtime                      ❌ not authorized
-Ecosystem integration                   ❌ not authorized
+Production runtime                       ❌ not authorized
+Ecosystem integration                    ❌ not authorized
 ```
 
-The research dependency sequence is:
+The research dependency sequence remains:
 
 `E0-C Capture Isolation → Capture analysis → E0-T Transfer Isolation → Transfer analysis → mandatory Architecture Reassessment`
 
-Before E0-C evidence, the current harness-readiness workstream still requires the human-reference gate, Pilot-only validation, allowed Pilot corrections, Evidence Lock, then **STOP**. None of those dependencies automatically authorize the next step.
+Before E0-C evidence, the harness-readiness workstream still requires a separately owner-authorized Pilot-only validation, allowed Pilot corrections, Evidence Lock, then **STOP**. Human-reference approval satisfies only the human-reference dependency and does not authorize any later dependency.
 
 ## Human-reference rule
 
-Issue #9 and `experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md` define the current research-integrity gate.
+Issue #9, `experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md`, and the versioned approval record define the current research-integrity boundary.
 
 ```text
 AI_PROPOSED_DRAFT
@@ -111,11 +114,17 @@ AI_PROPOSED_DRAFT
 machine-valid hashes / structure
 != human semantic approval
 
-AI pre-review
-!= human attestation
+human semantic approval
+!= Pilot authorization
 ```
 
-A human reviewer must make item-level `ACCEPT / REVISE / REJECT` decisions against the bound candidate/version before authoritative Gold/Oracle may be materialized.
+All 14 canonical human review rows are explicit `ACCEPT`. Historical candidates remain `AI_PROPOSED_DRAFT`; authoritative Experiment 0 references are materialized separately as:
+
+- `experiments/e0/gold/approved/capture-gold.v0.1.json`;
+- `experiments/e0/oracle/approved/transfer-oracle.v0.1.json`;
+- `experiments/e0/approval/human-reference-approval.v0.2.json`.
+
+The approval record binds human decision provenance to the exact reviewed commit/tree/snapshot and candidate bytes. It closes only the human-reference gate. It does not authorize a Pilot, Evidence Lock, E0-C/E0-T Evidence, production architecture/runtime, event sourcing, or ecosystem integration.
 
 ## Change classification
 
