@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Single supported execution endpoint for an explicitly authorized Experiment 0 Pilot.
-
-The command validates canonical authorization, the exact Pilot manifest, human approval,
-Git head/tree/worktree, and exact request bytes immediately before reserving one bounded
-attempt and spawning the internal adapter primitive. Pilot artifacts are written only to
-a dedicated sibling directory outside the Git repository.
-"""
+"""Single supported execution endpoint for an explicitly authorized Experiment 0 Pilot."""
 from __future__ import annotations
 
 import sys
@@ -23,6 +17,8 @@ from typing import Any
 from preflight_pilot import (
     PILOT_OUTPUT_DESTINATION,
     PreflightError,
+    ensure_clean_worktree,
+    run_git,
     sha256_bytes,
     validate_human_approval,
     validate_manifest,
@@ -169,7 +165,6 @@ def main() -> int:
         manifest = parse_json_object(manifest_bytes, label="Pilot manifest")
         manifest_sha = sha256_bytes(manifest_bytes)
 
-        # Authority and drift are checked immediately before any attempt is reserved.
         validate_manifest(
             manifest,
             root,
@@ -179,12 +174,15 @@ def main() -> int:
             check_authority_state=True,
         )
         validate_human_approval(root)
+        ensure_clean_worktree(root)
+        runtime_head = run_git(root, "rev-parse", "HEAD")
+        runtime_tree = run_git(root, "rev-parse", "HEAD^{tree}")
 
         request_bytes = read_regular_file_once(request_path, label="Pilot request")
         expected_request_hash = manifest.get("request_sha256")
         if not isinstance(expected_request_hash, str) or sha256_bytes(request_bytes) != expected_request_hash:
             raise PreflightError("request bytes SHA-256 do not match authorized Pilot manifest")
-        request = parse_json_object(request_bytes, label="Pilot request")
+        parse_json_object(request_bytes, label="Pilot request")
 
         limits = manifest["limits"]
         max_runs = limits["max_runs"]
@@ -197,6 +195,10 @@ def main() -> int:
             attempt_dir / "reservation.json",
             {
                 "package_sha256": manifest_sha,
+                "authorization_base_commit": manifest["authorization_base_commit"],
+                "authorization_base_tree": manifest["authorization_base_tree"],
+                "runtime_head_commit": runtime_head,
+                "runtime_tree": runtime_tree,
                 "attempt": attempt_number,
                 "max_runs": max_runs,
                 "status": "RESERVED",
@@ -206,6 +208,7 @@ def main() -> int:
 
         cwd = safe_adapter_cwd(root, manifest["adapter_cwd"])
         env = build_child_env(manifest["environment_allowlist"])
+        ensure_clean_worktree(root)
         returncode, stdout, stderr, elapsed_ms = bounded_run(
             shlex.split(manifest["adapter_command"]),
             request_text=request_bytes.decode("utf-8"),
@@ -237,18 +240,24 @@ def main() -> int:
                 "sandbox": False,
             },
         }
-        atomic_write_json(attempt_dir / "response.json", response)
-        atomic_write_json(attempt_dir / "metrics.json", metrics)
+        response_payload = (json.dumps(response, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        metrics_payload = (json.dumps(metrics, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        atomic_write_bytes(attempt_dir / "response.json", response_payload)
+        atomic_write_bytes(attempt_dir / "metrics.json", metrics_payload)
         atomic_write_json(
             attempt_dir / "result.json",
             {
                 "status": "COMPLETED",
                 "label": "PILOT — NOT EVIDENCE",
                 "package_sha256": manifest_sha,
+                "authorization_base_commit": manifest["authorization_base_commit"],
+                "authorization_base_tree": manifest["authorization_base_tree"],
+                "runtime_head_commit": runtime_head,
+                "runtime_tree": runtime_tree,
                 "attempt": attempt_number,
                 "request_sha256": sha256_bytes(request_bytes),
-                "response_sha256": sha256_bytes((json.dumps(response, ensure_ascii=False, indent=2) + "\n").encode("utf-8")),
-                "metrics_sha256": sha256_bytes((json.dumps(metrics, ensure_ascii=False, indent=2) + "\n").encode("utf-8")),
+                "response_sha256": sha256_bytes(response_payload),
+                "metrics_sha256": sha256_bytes(metrics_payload),
             },
         )
         print(f"PILOT_EXECUTION_COMPLETED: {attempt_dir}")
@@ -256,10 +265,7 @@ def main() -> int:
     except (PreflightError, AdapterError, OSError) as exc:
         if attempt_dir is not None:
             try:
-                atomic_write_json(
-                    attempt_dir / "result.json",
-                    {"status": "FAILED", "label": "PILOT — NOT EVIDENCE", "error": str(exc)},
-                )
+                atomic_write_json(attempt_dir / "result.json", {"status": "FAILED", "label": "PILOT — NOT EVIDENCE", "error": str(exc)})
             except OSError:
                 pass
         print(f"PILOT_EXECUTION_ERROR: {exc}", file=sys.stderr)
