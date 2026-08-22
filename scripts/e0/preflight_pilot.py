@@ -42,6 +42,10 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -113,7 +117,18 @@ def evidence_ids(root: Path) -> set[str]:
     return ids
 
 
-def validate_canonical_authorization(root: Path) -> None:
+def canonical_manifest_path(root: Path, manifest_path: Path) -> str:
+    resolved = manifest_path.resolve()
+    try:
+        relative = resolved.relative_to(root)
+    except ValueError as exc:
+        raise PreflightError("authorized Pilot manifest must be a repository-relative canonical artifact") from exc
+    if manifest_path.is_symlink():
+        raise PreflightError("authorized Pilot manifest must not be a symlink")
+    return relative.as_posix()
+
+
+def validate_canonical_authorization(root: Path, *, manifest_path: Path | None = None, manifest_sha256: str | None = None) -> None:
     state = load_json(root / PROJECT_STATE_PATH)
     status = state.get("experiment_0_pilot_status")
     if status != AUTHORIZED_PILOT_STATE:
@@ -128,17 +143,33 @@ def validate_canonical_authorization(root: Path) -> None:
     if state.get("e0c_started") is not False or state.get("e0t_started") is not False:
         raise PreflightError("Pilot authorization must not mark E0-C/E0-T Evidence started")
 
+    authorization = state.get("experiment_0_pilot_authorization")
+    if not isinstance(authorization, dict):
+        raise PreflightError("canonical Pilot authorization package binding is absent")
+    if authorization.get("status") != "AUTHORIZED_BOUNDED_PILOT_PACKAGE":
+        raise PreflightError("canonical Pilot authorization package status is invalid")
+    require_string(authorization.get("authorization_id"), "experiment_0_pilot_authorization.authorization_id")
+    approved_path = require_string(authorization.get("manifest_path"), "experiment_0_pilot_authorization.manifest_path")
+    approved_sha = require_sha256(authorization.get("manifest_sha256"), "experiment_0_pilot_authorization.manifest_sha256")
+    if manifest_path is None or manifest_sha256 is None:
+        raise PreflightError("exact manifest path/hash are required for canonical Pilot authorization binding")
+    actual_path = canonical_manifest_path(root, manifest_path)
+    if actual_path != approved_path or manifest_sha256 != approved_sha:
+        raise PreflightError("Pilot manifest does not match canonical owner-approved package binding")
+
 
 def validate_manifest(
     manifest: dict[str, Any],
     root: Path,
     *,
+    manifest_path: Path | None = None,
+    manifest_sha256: str | None = None,
     check_git: bool = True,
     check_authority_state: bool = True,
 ) -> list[str]:
     reject_secret_material(manifest)
     if check_authority_state:
-        validate_canonical_authorization(root)
+        validate_canonical_authorization(root, manifest_path=manifest_path, manifest_sha256=manifest_sha256)
     if manifest.get("run_type") != "PILOT" or manifest.get("label") != "PILOT — NOT EVIDENCE":
         raise PreflightError("manifest must be explicitly labelled PILOT — NOT EVIDENCE")
     if manifest.get("owner_decision_id") != "OD-PILOT-01":
@@ -200,14 +231,13 @@ def validate_manifest(
         )
     if posture not in ALLOWED_POSTURES:
         raise PreflightError("invalid execution_posture")
-    isolation = manifest.get("isolation")
     expected_isolation = {
         "isolation_enforcement": "NOT_ENFORCED",
         "network_isolation": "NOT_ENFORCED",
         "filesystem_isolation": "NOT_ENFORCED",
         "process_isolation": "NOT_ENFORCED",
     }
-    if isolation != expected_isolation:
+    if manifest.get("isolation") != expected_isolation:
         raise PreflightError("UNCONTROLLED_LOCAL_ADVISORY must explicitly declare all isolation guarantees NOT_ENFORCED")
 
     limits = manifest.get("limits")
@@ -218,8 +248,7 @@ def validate_manifest(
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
             raise PreflightError(f"limits.{field} must be a positive integer")
 
-    lock = manifest.get("evidence_lock")
-    if lock != {"status": "NOT_CREATED", "sha256": None}:
+    if manifest.get("evidence_lock") != {"status": "NOT_CREATED", "sha256": None}:
         raise PreflightError("Pilot manifest must keep Evidence Lock NOT_CREATED")
 
     model = manifest.get("model")
@@ -235,6 +264,7 @@ def validate_manifest(
     require_string(credentials.get("profile"), "credentials.profile")
     require_string(credentials.get("scope"), "credentials.scope")
     require_string(manifest.get("adapter_command"), "adapter_command")
+    require_sha256(manifest.get("request_sha256"), "request_sha256")
 
     adapter_cwd = require_string(manifest.get("adapter_cwd"), "adapter_cwd")
     adapter_cwd_path = Path(adapter_cwd)
@@ -275,12 +305,21 @@ def main() -> int:
     root = args.repo_root.resolve()
     manifest_path = args.manifest if args.manifest.is_absolute() else root / args.manifest
     try:
-        messages = validate_manifest(load_json(manifest_path), root)
+        manifest_bytes = manifest_path.read_bytes()
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+        if not isinstance(manifest, dict):
+            raise PreflightError("Pilot manifest must contain a JSON object")
+        messages = validate_manifest(
+            manifest,
+            root,
+            manifest_path=manifest_path,
+            manifest_sha256=sha256_bytes(manifest_bytes),
+        )
         validate_human_approval(root)
-    except PreflightError as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, PreflightError) as exc:
         print(f"PILOT_PREFLIGHT_ERROR: {exc}", file=sys.stderr)
         return 1
-    print("PILOT_PREFLIGHT_VALID: canonical owner authorization is present and bounded Pilot inputs are consistent.")
+    print("PILOT_PREFLIGHT_VALID: canonical owner authorization is present and the exact bounded Pilot package is bound.")
     for message in messages:
         print(f"PILOT_PREFLIGHT_BINDING: {message}")
     print("PILOT_PREFLIGHT_BOUNDARY: this check does not create Evidence Lock, authorize Evidence, or prove sandbox isolation/scientific validity.")
