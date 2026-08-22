@@ -18,6 +18,7 @@
     }
   ],
   "fixture_or_scenario_ids": ["<PILOT-only ID>"],
+  "request_sha256": "<sha256 of exact authorized request JSON>",
   "execution_posture": "UNCONTROLLED_LOCAL_ADVISORY",
   "isolation": {
     "isolation_enforcement": "NOT_ENFORCED",
@@ -44,5 +45,7 @@
     "scope": "<minimal required scope>"
   },
   "adapter_command": "<exact adapter command>",
-  "output_destination": "<Pilot-only output directory>"
+  "adapter_cwd": ".",
+  "environment_allowlist": [],
+  "output_destination": ".velantrim-continuum-pilot-runs"
 }
