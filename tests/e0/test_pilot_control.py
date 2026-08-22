@@ -7,10 +7,14 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS = ROOT / "scripts/e0"
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
 
 
 def load_module(name: str, path: Path):
@@ -21,7 +25,9 @@ def load_module(name: str, path: Path):
     return module
 
 
-preflight = load_module("preflight_pilot", ROOT / "scripts/e0/preflight_pilot.py")
+preflight = load_module("preflight_pilot", SCRIPTS / "preflight_pilot.py")
+run_adapter = load_module("run_adapter", SCRIPTS / "run_adapter.py")
+execute_pilot = load_module("execute_pilot", SCRIPTS / "execute_pilot.py")
 
 
 def sha256(path: Path) -> str:
@@ -49,6 +55,7 @@ def valid_manifest() -> dict:
             }
         ],
         "fixture_or_scenario_ids": ["F1-P-A", "T-PILOT-01"],
+        "request_sha256": "d" * 64,
         "execution_posture": "UNCONTROLLED_LOCAL_ADVISORY",
         "isolation": {
             "isolation_enforcement": "NOT_ENFORCED",
@@ -61,7 +68,9 @@ def valid_manifest() -> dict:
         "model": {"provider": "example", "identifier": "model-v1", "settings": {}},
         "credentials": {"profile": "pilot-minimal", "scope": "inference-only"},
         "adapter_command": "python adapter.py",
-        "output_destination": "artifacts/pilot/example",
+        "adapter_cwd": ".",
+        "environment_allowlist": [],
+        "output_destination": preflight.PILOT_OUTPUT_DESTINATION,
     }
 
 
@@ -81,12 +90,7 @@ class PilotPreflightTests(unittest.TestCase):
 
     def test_canonical_project_state_blocks_pilot_before_owner_authorization(self):
         with self.assertRaisesRegex(preflight.PreflightError, "canonical project state does not authorize Pilot"):
-            preflight.validate_manifest(
-                valid_manifest(),
-                ROOT,
-                check_git=False,
-                check_authority_state=True,
-            )
+            preflight.validate_manifest(valid_manifest(), ROOT, check_git=False, check_authority_state=True)
 
     def test_draft_owner_decision_fails_closed(self):
         manifest = valid_manifest()
@@ -112,72 +116,157 @@ class PilotPreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(preflight.PreflightError, "NOT_ENFORCED"):
             validate_structure(manifest)
 
+    def test_isolated_runner_posture_fails_until_real_contract_exists(self):
+        manifest = valid_manifest()
+        manifest["execution_posture"] = "ISOLATED_RUNNER_CONTRACT"
+        manifest["isolation"] = {"claimed": "ENFORCED_WITHOUT_CONTRACT_REFERENCE"}
+        with self.assertRaisesRegex(preflight.PreflightError, "not implemented or contract-bound"):
+            validate_structure(manifest)
+
     def test_evidence_lock_must_remain_not_created(self):
         manifest = valid_manifest()
         manifest["evidence_lock"] = {"status": "CREATED", "sha256": "c" * 64}
         with self.assertRaisesRegex(preflight.PreflightError, "Evidence Lock NOT_CREATED"):
             validate_structure(manifest)
 
+    def test_output_destination_cannot_target_repository_file(self):
+        manifest = valid_manifest()
+        manifest["output_destination"] = "project-state.json"
+        with self.assertRaisesRegex(preflight.PreflightError, "dedicated non-repository Pilot root"):
+            validate_structure(manifest)
+
+    def test_adapter_cwd_cannot_escape_repository(self):
+        manifest = valid_manifest()
+        manifest["adapter_cwd"] = "../outside"
+        with self.assertRaisesRegex(preflight.PreflightError, "without parent traversal"):
+            validate_structure(manifest)
+
 
 class RunAdapterTests(unittest.TestCase):
-    def run_adapter(self, adapter_source: str, *, timeout: int = 2, cap: int = 4096, extra_env: dict[str, str] | None = None):
+    def bounded(self, adapter_source: str, *, timeout: int = 2, cap: int = 4096, extra_env: dict[str, str] | None = None):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             adapter = temp / "adapter.py"
             adapter.write_text(adapter_source, encoding="utf-8")
-            request = temp / "request.json"
-            request.write_text('{"ping":"pong"}\n', encoding="utf-8")
-            output = temp / "output.json"
-            metrics = temp / "metrics.json"
-            env = os.environ.copy()
+            env = {"PATH": os.environ.get("PATH", "")}
             if extra_env:
                 env.update(extra_env)
+            return run_adapter.bounded_run(
+                [sys.executable, str(adapter)],
+                request_text='{"ping":"pong"}',
+                cwd=temp,
+                env=env,
+                timeout_seconds=timeout,
+                max_output_bytes=cap,
+            )
+
+    def test_direct_run_adapter_cli_is_rejected(self):
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPTS / "run_adapter.py")],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("internal helper", proc.stderr)
+        self.assertIn("execute_pilot.py", proc.stderr)
+
+    def test_adapter_success_returns_bounded_output(self):
+        returncode, output, _, _ = self.bounded("import json; print(json.dumps({'ok': True}))")
+        self.assertEqual(returncode, 0)
+        self.assertIn('"ok": true', output)
+
+    def test_adapter_timeout_fails(self):
+        with self.assertRaisesRegex(run_adapter.AdapterError, "timeout"):
+            self.bounded("import time; time.sleep(5); print('{}')", timeout=1)
+
+    def test_adapter_output_cap_fails(self):
+        with self.assertRaisesRegex(run_adapter.AdapterError, "exceeded"):
+            self.bounded("print('x' * 20000)", cap=1024)
+
+    def test_unlisted_environment_is_not_inherited(self):
+        source = "import json,os; print(json.dumps({'leaked': os.getenv('VELANTRIM_TEST_SECRET')}))"
+        returncode, output, _, _ = self.bounded(source)
+        self.assertEqual(returncode, 0)
+        self.assertIn('"leaked": null', output)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process-group regression")
+    def test_timeout_kills_descendant_process_group(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            pid_file = temp / "child.pid"
+            adapter = temp / "adapter.py"
+            adapter.write_text(
+                "import subprocess,sys,time\n"
+                "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'])\n"
+                "open(sys.argv[1],'w').write(str(child.pid))\n"
+                "time.sleep(10)\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(run_adapter.AdapterError, "timeout"):
+                run_adapter.bounded_run(
+                    [sys.executable, str(adapter), str(pid_file)],
+                    request_text="{}",
+                    cwd=temp,
+                    env={"PATH": os.environ.get("PATH", "")},
+                    timeout_seconds=1,
+                    max_output_bytes=4096,
+                )
+            pid = int(pid_file.read_text(encoding="utf-8"))
+            deadline = time.monotonic() + 2.0
+            alive = True
+            while time.monotonic() < deadline:
+                stat = Path(f"/proc/{pid}/stat")
+                if not stat.exists():
+                    alive = False
+                    break
+                parts = stat.read_text(encoding="utf-8", errors="replace").split()
+                if len(parts) > 2 and parts[2] == "Z":
+                    alive = False
+                    break
+                time.sleep(0.05)
+            self.assertFalse(alive, f"adapter descendant {pid} survived bounded timeout")
+
+
+class ExecutePilotTests(unittest.TestCase):
+    def test_max_runs_reservation_is_atomic_and_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            package = Path(temp_dir) / "package"
+            attempt, first = execute_pilot.reserve_attempt(package, 1)
+            self.assertEqual(attempt, 1)
+            self.assertTrue(first.is_dir())
+            with self.assertRaisesRegex(preflight.PreflightError, "max_runs exhausted"):
+                execute_pilot.reserve_attempt(package, 1)
+
+    def test_official_executor_fails_before_spawn_while_canonical_state_unauthorized(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            marker = temp / "spawned"
+            adapter = temp / "adapter.py"
+            adapter.write_text(f"open({str(marker)!r},'w').write('spawned'); print('{{}}')", encoding="utf-8")
+            manifest = valid_manifest()
+            manifest["adapter_command"] = f"{sys.executable} {adapter}"
+            manifest_path = temp / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            request = temp / "request.json"
+            request.write_text("{}", encoding="utf-8")
             proc = subprocess.run(
                 [
                     sys.executable,
-                    str(ROOT / "scripts/e0/run_adapter.py"),
-                    "--adapter-cmd", f"{sys.executable} {adapter}",
+                    str(SCRIPTS / "execute_pilot.py"),
+                    "--repo-root", str(ROOT),
+                    "--manifest", str(manifest_path),
                     "--request", str(request),
-                    "--output", str(output),
-                    "--metrics-output", str(metrics),
-                    "--cwd", str(temp),
-                    "--timeout-seconds", str(timeout),
-                    "--max-output-bytes", str(cap),
                 ],
                 cwd=ROOT,
-                env=env,
                 text=True,
                 capture_output=True,
                 check=False,
             )
-            return proc, output.read_text(encoding="utf-8") if output.exists() else None, json.loads(metrics.read_text(encoding="utf-8")) if metrics.exists() else None
-
-    def test_adapter_success_records_limits_and_no_sandbox_claim(self):
-        proc, output, metrics = self.run_adapter("import json; print(json.dumps({'ok': True}))")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn('"ok": true', output)
-        self.assertFalse(metrics["execution_limits"]["sandbox"])
-        self.assertEqual(metrics["execution_limits"]["max_output_bytes"], 4096)
-
-    def test_adapter_timeout_fails(self):
-        proc, output, metrics = self.run_adapter("import time; time.sleep(5); print('{}')", timeout=1)
-        self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("timeout", proc.stderr.lower())
-        self.assertIsNone(output)
-        self.assertIsNone(metrics)
-
-    def test_adapter_output_cap_fails(self):
-        proc, output, metrics = self.run_adapter("print('x' * 20000)", cap=1024)
-        self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("exceeded", proc.stderr.lower())
-        self.assertIsNone(output)
-        self.assertIsNone(metrics)
-
-    def test_unlisted_environment_is_not_inherited(self):
-        source = "import json,os; print(json.dumps({'leaked': os.getenv('VELANTRIM_TEST_SECRET')}))"
-        proc, output, _ = self.run_adapter(source, extra_env={"VELANTRIM_TEST_SECRET": "secret-value"})
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn('"leaked": null', output)
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("canonical project state does not authorize Pilot", proc.stderr)
+            self.assertFalse(marker.exists(), "adapter spawned despite absent canonical Pilot authority")
 
 
 if __name__ == "__main__":
