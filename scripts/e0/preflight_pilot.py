@@ -17,11 +17,13 @@ from typing import Any
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 APPROVAL_PATH = "experiments/e0/approval/human-reference-approval.v0.2.json"
 PROJECT_STATE_PATH = "project-state.json"
 CAPTURE_PILOT_PATH = "experiments/e0/fixtures/capture/pilot/fixtures.json"
 TRANSFER_PATH = "experiments/e0/fixtures/transfer/scenarios.json"
-ALLOWED_POSTURES = {"UNCONTROLLED_LOCAL_ADVISORY", "ISOLATED_RUNNER_CONTRACT"}
+ALLOWED_POSTURES = {"UNCONTROLLED_LOCAL_ADVISORY"}
+PILOT_OUTPUT_DESTINATION = ".velantrim-continuum-pilot-runs"
 FORBIDDEN_SECRET_KEYS = {"api_key", "token", "secret", "password", "credential_secret_value"}
 AUTHORIZED_PILOT_STATE = "AUTHORIZED_BOUNDED_PILOT"
 
@@ -192,18 +194,21 @@ def validate_manifest(
         raise PreflightError(f"unknown/non-Pilot fixture or scenario IDs: {sorted(unknown)}")
 
     posture = manifest.get("execution_posture")
+    if posture == "ISOLATED_RUNNER_CONTRACT":
+        raise PreflightError(
+            "ISOLATED_RUNNER_CONTRACT is not implemented or contract-bound; only UNCONTROLLED_LOCAL_ADVISORY is currently supported"
+        )
     if posture not in ALLOWED_POSTURES:
         raise PreflightError("invalid execution_posture")
     isolation = manifest.get("isolation")
-    if posture == "UNCONTROLLED_LOCAL_ADVISORY":
-        expected = {
-            "isolation_enforcement": "NOT_ENFORCED",
-            "network_isolation": "NOT_ENFORCED",
-            "filesystem_isolation": "NOT_ENFORCED",
-            "process_isolation": "NOT_ENFORCED",
-        }
-        if isolation != expected:
-            raise PreflightError("UNCONTROLLED_LOCAL_ADVISORY must explicitly declare all isolation guarantees NOT_ENFORCED")
+    expected_isolation = {
+        "isolation_enforcement": "NOT_ENFORCED",
+        "network_isolation": "NOT_ENFORCED",
+        "filesystem_isolation": "NOT_ENFORCED",
+        "process_isolation": "NOT_ENFORCED",
+    }
+    if isolation != expected_isolation:
+        raise PreflightError("UNCONTROLLED_LOCAL_ADVISORY must explicitly declare all isolation guarantees NOT_ENFORCED")
 
     limits = manifest.get("limits")
     if not isinstance(limits, dict):
@@ -230,7 +235,23 @@ def validate_manifest(
     require_string(credentials.get("profile"), "credentials.profile")
     require_string(credentials.get("scope"), "credentials.scope")
     require_string(manifest.get("adapter_command"), "adapter_command")
-    require_string(manifest.get("output_destination"), "output_destination")
+
+    adapter_cwd = require_string(manifest.get("adapter_cwd"), "adapter_cwd")
+    adapter_cwd_path = Path(adapter_cwd)
+    if adapter_cwd_path.is_absolute() or ".." in adapter_cwd_path.parts:
+        raise PreflightError("adapter_cwd must be a normalized repository-relative path without parent traversal")
+
+    env_allowlist = manifest.get("environment_allowlist")
+    if not isinstance(env_allowlist, list) or any(not isinstance(item, str) or not ENV_NAME_RE.fullmatch(item) for item in env_allowlist):
+        raise PreflightError("environment_allowlist must be a list of valid environment variable names")
+    if len(env_allowlist) != len(set(env_allowlist)):
+        raise PreflightError("environment_allowlist must not contain duplicates")
+
+    output_destination = require_string(manifest.get("output_destination"), "output_destination")
+    if output_destination != PILOT_OUTPUT_DESTINATION:
+        raise PreflightError(
+            f"output_destination must be the dedicated non-repository Pilot root {PILOT_OUTPUT_DESTINATION!r}"
+        )
     return [f"execution_head={execution_head}", f"pilot_ids={','.join(requested)}", f"posture={posture}"]
 
 
