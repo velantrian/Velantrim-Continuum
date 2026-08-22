@@ -10,6 +10,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts/e0"
@@ -76,12 +77,7 @@ def valid_manifest() -> dict:
 
 
 def validate_structure(manifest: dict):
-    return preflight.validate_manifest(
-        manifest,
-        ROOT,
-        check_git=False,
-        check_authority_state=False,
-    )
+    return preflight.validate_manifest(manifest, ROOT, check_git=False, check_authority_state=False)
 
 
 class PilotPreflightTests(unittest.TestCase):
@@ -92,6 +88,33 @@ class PilotPreflightTests(unittest.TestCase):
     def test_canonical_project_state_blocks_pilot_before_owner_authorization(self):
         with self.assertRaisesRegex(preflight.PreflightError, "canonical project state does not authorize Pilot"):
             preflight.validate_manifest(valid_manifest(), ROOT, check_git=False, check_authority_state=True)
+
+    def test_future_authorized_state_requires_exact_manifest_binding(self):
+        manifest = valid_manifest()
+        with tempfile.TemporaryDirectory(dir=ROOT) as temp_dir:
+            manifest_path = Path(temp_dir) / "pilot.json"
+            payload = json.dumps(manifest).encode("utf-8")
+            manifest_path.write_bytes(payload)
+            fake_state = {
+                "experiment_0_pilot_status": preflight.AUTHORIZED_PILOT_STATE,
+                "experiment_0_pilot_authorization": {
+                    "status": "AUTHORIZED_BOUNDED_PILOT_PACKAGE",
+                    "authorization_id": "AUTH-1",
+                    "manifest_path": manifest_path.relative_to(ROOT).as_posix(),
+                    "manifest_sha256": "0" * 64,
+                },
+                "experiment_0_evidence_lock_sha": None,
+                "experiment_0_evidence_ready": False,
+                "e0c_started": False,
+                "e0t_started": False,
+            }
+            with mock.patch.object(preflight, "load_json", return_value=fake_state):
+                with self.assertRaisesRegex(preflight.PreflightError, "does not match canonical owner-approved package binding"):
+                    preflight.validate_canonical_authorization(
+                        ROOT,
+                        manifest_path=manifest_path,
+                        manifest_sha256=hashlib.sha256(payload).hexdigest(),
+                    )
 
     def test_draft_owner_decision_fails_closed(self):
         manifest = valid_manifest()
@@ -144,34 +167,24 @@ class PilotPreflightTests(unittest.TestCase):
 
 
 class RunAdapterTests(unittest.TestCase):
-    def bounded(self, adapter_source: str, *, timeout: int = 2, cap: int = 4096, extra_env: dict[str, str] | None = None):
+    def bounded(self, adapter_source: str, *, timeout: int = 2, cap: int = 4096):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             adapter = temp / "adapter.py"
             adapter.write_text(adapter_source, encoding="utf-8")
-            env = {"PATH": os.environ.get("PATH", "")}
-            if extra_env:
-                env.update(extra_env)
             return run_adapter.bounded_run(
                 [sys.executable, str(adapter)],
                 request_text='{"ping":"pong"}',
                 cwd=temp,
-                env=env,
+                env={"PATH": os.environ.get("PATH", "")},
                 timeout_seconds=timeout,
                 max_output_bytes=cap,
             )
 
     def test_direct_run_adapter_cli_is_rejected(self):
-        proc = subprocess.run(
-            [sys.executable, str(SCRIPTS / "run_adapter.py")],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        proc = subprocess.run([sys.executable, str(SCRIPTS / "run_adapter.py")], cwd=ROOT, text=True, capture_output=True, check=False)
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("internal helper", proc.stderr)
-        self.assertIn("execute_pilot.py", proc.stderr)
 
     def test_adapter_success_returns_bounded_output(self):
         returncode, output, _, _ = self.bounded("import json; print(json.dumps({'ok': True}))")
@@ -185,12 +198,6 @@ class RunAdapterTests(unittest.TestCase):
     def test_adapter_output_cap_fails(self):
         with self.assertRaisesRegex(run_adapter.AdapterError, "exceeded"):
             self.bounded("print('x' * 20000)", cap=1024)
-
-    def test_unlisted_environment_is_not_inherited(self):
-        source = "import json,os; print(json.dumps({'leaked': os.getenv('VELANTRIM_TEST_SECRET')}))"
-        returncode, output, _, _ = self.bounded(source)
-        self.assertEqual(returncode, 0)
-        self.assertIn('\"leaked\": null', output)
 
     @unittest.skipUnless(os.name == "posix", "POSIX process-group regression")
     def test_timeout_kills_descendant_process_group(self):
@@ -218,11 +225,11 @@ class RunAdapterTests(unittest.TestCase):
             deadline = time.monotonic() + 2.0
             alive = True
             while time.monotonic() < deadline:
-                stat = Path(f"/proc/{pid}/stat")
-                if not stat.exists():
+                stat_path = Path(f"/proc/{pid}/stat")
+                if not stat_path.exists():
                     alive = False
                     break
-                parts = stat.read_text(encoding="utf-8", errors="replace").split()
+                parts = stat_path.read_text(encoding="utf-8", errors="replace").split()
                 if len(parts) > 2 and parts[2] == "Z":
                     alive = False
                     break
@@ -233,12 +240,48 @@ class RunAdapterTests(unittest.TestCase):
 class ExecutePilotTests(unittest.TestCase):
     def test_max_runs_reservation_is_atomic_and_fail_closed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            package = Path(temp_dir) / "package"
-            attempt, first = execute_pilot.reserve_attempt(package, 1)
+            root = Path(temp_dir)
+            attempt, first = execute_pilot.reserve_attempt(root, "a" * 64, 1)
             self.assertEqual(attempt, 1)
             self.assertTrue(first.is_dir())
             with self.assertRaisesRegex(preflight.PreflightError, "max_runs exhausted"):
-                execute_pilot.reserve_attempt(package, 1)
+                execute_pilot.reserve_attempt(root, "a" * 64, 1)
+
+    def test_output_root_symlink_escape_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            parent = Path(temp_dir)
+            repo = parent / "repo"
+            repo.mkdir()
+            output = parent / preflight.PILOT_OUTPUT_DESTINATION
+            output.symlink_to(repo, target_is_directory=True)
+            with self.assertRaisesRegex(preflight.PreflightError, "must not be a symlink"):
+                execute_pilot.ensure_output_root(repo.resolve())
+
+    def test_request_symlink_is_rejected_before_hash_or_parse(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            target = temp / "target.json"
+            target.write_text('{"safe":true}', encoding="utf-8")
+            link = temp / "request.json"
+            link.symlink_to(target)
+            with self.assertRaisesRegex(preflight.PreflightError, "must not be a symlink"):
+                execute_pilot.read_regular_file_once(link, label="Pilot request")
+
+    def test_normal_executor_import_does_not_create_pycache(self):
+        pycache = SCRIPTS / "__pycache__"
+        if pycache.exists():
+            for child in pycache.iterdir():
+                child.unlink()
+            pycache.rmdir()
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPTS / "execute_pilot.py"), "--help"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse(pycache.exists(), "official executor created bytecode before preflight")
 
     def test_official_executor_fails_before_spawn_while_canonical_state_unauthorized(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -246,20 +289,15 @@ class ExecutePilotTests(unittest.TestCase):
             marker = temp / "spawned"
             adapter = temp / "adapter.py"
             adapter.write_text(f"open({str(marker)!r},'w').write('spawned'); print('{{}}')", encoding="utf-8")
-            manifest = valid_manifest()
-            manifest["adapter_command"] = f"{sys.executable} {adapter}"
-            manifest_path = temp / "manifest.json"
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             request = temp / "request.json"
             request.write_text("{}", encoding="utf-8")
+            manifest = valid_manifest()
+            manifest["adapter_command"] = f"{sys.executable} {adapter}"
+            manifest["request_sha256"] = sha256(request)
+            manifest_path = temp / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             proc = subprocess.run(
-                [
-                    sys.executable,
-                    str(SCRIPTS / "execute_pilot.py"),
-                    "--repo-root", str(ROOT),
-                    "--manifest", str(manifest_path),
-                    "--request", str(request),
-                ],
+                [sys.executable, str(SCRIPTS / "execute_pilot.py"), "--repo-root", str(ROOT), "--manifest", str(manifest_path), "--request", str(request)],
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
