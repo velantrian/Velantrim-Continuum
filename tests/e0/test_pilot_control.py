@@ -386,6 +386,10 @@ class ExecutePilotTests(unittest.TestCase):
 
     def test_human_validator_child_does_not_create_bytecode_drift(self):
         pycache = SCRIPTS / "__pycache__"
+        if pycache.exists():
+            for child in pycache.iterdir():
+                child.unlink()
+            pycache.rmdir()
         before = git(ROOT, "status", "--porcelain")
         proc = subprocess.run(
             [sys.executable, "-B", "scripts/e0/validate_human_reference_approval.py", "--repo-root", str(ROOT)],
