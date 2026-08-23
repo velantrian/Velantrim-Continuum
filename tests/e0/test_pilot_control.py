@@ -4,13 +4,13 @@ import hashlib
 import importlib.util
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts/e0"
@@ -36,7 +36,11 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def valid_manifest() -> dict:
+def git(repo: Path, *args: str) -> str:
+    return subprocess.check_output(["git", *args], cwd=repo, text=True).strip()
+
+
+def valid_manifest(root: Path = ROOT, *, request_sha: str = "d" * 64) -> dict:
     return {
         "run_type": "PILOT",
         "label": "PILOT — NOT EVIDENCE",
@@ -44,20 +48,19 @@ def valid_manifest() -> dict:
         "owner_decision_status": "ADOPTED",
         "owner_github_login": "velantrian",
         "owner_adopted_at": "2026-08-23T00:00:00Z",
-        "authorization_base_commit": "a" * 40,
-        "authorization_base_tree": "b" * 40,
+        "activation_policy": preflight.ACTIVATION_POLICY,
         "human_approval": {
             "path": preflight.APPROVAL_PATH,
-            "sha256": sha256(ROOT / preflight.APPROVAL_PATH),
+            "sha256": sha256(root / preflight.APPROVAL_PATH),
         },
         "approved_references": [
             {
                 "path": "experiments/e0/gold/approved/capture-gold.v0.1.json",
-                "sha256": sha256(ROOT / "experiments/e0/gold/approved/capture-gold.v0.1.json"),
+                "sha256": sha256(root / "experiments/e0/gold/approved/capture-gold.v0.1.json"),
             }
         ],
         "fixture_or_scenario_ids": ["F1-P-A", "T-PILOT-01"],
-        "request_sha256": "d" * 64,
+        "request_sha256": request_sha,
         "execution_posture": "UNCONTROLLED_LOCAL_ADVISORY",
         "isolation": {
             "isolation_enforcement": "NOT_ENFORCED",
@@ -69,7 +72,7 @@ def valid_manifest() -> dict:
         "evidence_lock": {"status": "NOT_CREATED", "sha256": None},
         "model": {"provider": "example", "identifier": "model-v1", "settings": {}},
         "credentials": {"profile": "pilot-minimal", "scope": "inference-only"},
-        "adapter_command": "python adapter.py",
+        "adapter_command": "python -c \"import json; print(json.dumps({'ok': True}))\"",
         "adapter_cwd": ".",
         "environment_allowlist": [],
         "output_destination": preflight.PILOT_OUTPUT_DESTINATION,
@@ -80,45 +83,60 @@ def validate_structure(manifest: dict):
     return preflight.validate_manifest(manifest, ROOT, check_git=False, check_authority_state=False)
 
 
+def make_package_and_activation(repo: Path, *, mutate_between: tuple[str, str] | None = None) -> tuple[Path, Path, str, str, str, str]:
+    request = repo.parent / "request.json"
+    request.write_text("{}\n", encoding="utf-8")
+    manifest = valid_manifest(repo, request_sha=sha256(request))
+    package_dir = repo / "experiments/e0/pilot/packages"
+    package_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = package_dir / "od-pilot-01.v0.1.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    subprocess.run(["git", "add", manifest_path.relative_to(repo)], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "package"], cwd=repo, check=True)
+    base = git(repo, "rev-parse", "HEAD")
+    base_tree = git(repo, "rev-parse", "HEAD^{tree}")
+    manifest_sha = sha256(manifest_path)
+
+    if mutate_between is not None:
+        relative, content = mutate_between
+        target = repo / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
+    state_path = repo / "project-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["experiment_0_pilot_status"] = preflight.AUTHORIZED_PILOT_STATE
+    state["experiment_0_pilot_authorization"] = {
+        "status": preflight.AUTHORIZATION_PACKAGE_STATE,
+        "authorization_id": "OD-PILOT-01-v0.1",
+        "manifest_path": manifest_path.relative_to(repo).as_posix(),
+        "manifest_sha256": manifest_sha,
+        "authorization_base_commit": base,
+        "authorization_base_tree": base_tree,
+        "activation_policy": preflight.ACTIVATION_POLICY,
+        "activation_paths": ["project-state.json"],
+    }
+    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "activate"], cwd=repo, check=True)
+    head = git(repo, "rev-parse", "HEAD")
+    head_tree = git(repo, "rev-parse", "HEAD^{tree}")
+    return manifest_path, request, base, base_tree, head, head_tree
+
+
 class PilotPreflightTests(unittest.TestCase):
     def test_valid_bounded_manifest_passes_structural_validation(self):
         messages = validate_structure(valid_manifest())
         self.assertTrue(any(item.startswith("pilot_ids=") for item in messages))
 
     def test_canonical_project_state_blocks_pilot_before_owner_authorization(self):
-        with self.assertRaisesRegex(preflight.PreflightError, "canonical project state does not authorize Pilot"):
-            preflight.validate_manifest(valid_manifest(), ROOT, check_git=False, check_authority_state=True)
-
-    def test_future_authorized_state_requires_exact_manifest_binding(self):
         manifest = valid_manifest()
-        pilot_root = ROOT / "experiments/e0/pilot"
-        with tempfile.TemporaryDirectory(dir=pilot_root) as temp_dir:
-            manifest_path = Path(temp_dir) / "pilot.json"
-            payload = json.dumps(manifest).encode("utf-8")
-            manifest_path.write_bytes(payload)
-            fake_state = {
-                "experiment_0_pilot_status": preflight.AUTHORIZED_PILOT_STATE,
-                "experiment_0_pilot_authorization": {
-                    "status": preflight.AUTHORIZATION_PACKAGE_STATE,
-                    "authorization_id": "AUTH-1",
-                    "manifest_path": manifest_path.relative_to(ROOT).as_posix(),
-                    "manifest_sha256": "0" * 64,
-                    "authorization_base_commit": manifest["authorization_base_commit"],
-                    "authorization_base_tree": manifest["authorization_base_tree"],
-                },
-                "experiment_0_evidence_lock_sha": None,
-                "experiment_0_evidence_ready": False,
-                "e0c_started": False,
-                "e0t_started": False,
-            }
-            with mock.patch.object(preflight, "load_json", return_value=fake_state):
-                with self.assertRaisesRegex(preflight.PreflightError, "does not match canonical owner-approved package binding"):
-                    preflight.validate_canonical_authorization(
-                        ROOT,
-                        manifest=manifest,
-                        manifest_path=manifest_path,
-                        manifest_sha256=hashlib.sha256(payload).hexdigest(),
-                    )
+        with tempfile.TemporaryDirectory(dir=ROOT / "experiments/e0/pilot") as temp_dir:
+            path = Path(temp_dir) / "manifest.json"
+            payload = (json.dumps(manifest) + "\n").encode()
+            path.write_bytes(payload)
+            with self.assertRaisesRegex(preflight.PreflightError, "canonical project state does not authorize Pilot"):
+                preflight.validate_manifest(manifest, ROOT, manifest_path=path, manifest_sha256=hashlib.sha256(payload).hexdigest())
 
     def test_draft_owner_decision_fails_closed(self):
         manifest = valid_manifest()
@@ -169,78 +187,94 @@ class PilotPreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(preflight.PreflightError, "without parent traversal"):
             validate_structure(manifest)
 
-    def test_non_circular_authorization_transition_accepts_only_governance_paths(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repo = Path(temp_dir) / "repo"
-            repo.mkdir()
-            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
-            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
-            subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-            (repo / "project-state.json").write_text("{}\n", encoding="utf-8")
-            (repo / "STATUS.md").write_text("base\n", encoding="utf-8")
-            (repo / "docs/ai").mkdir(parents=True)
-            (repo / "docs/ai/CURRENT_STATE.md").write_text("base\n", encoding="utf-8")
-            (repo / "docs/research").mkdir(parents=True)
-            (repo / "docs/research/OD_PILOT_01_DRAFT.md").write_text("draft\n", encoding="utf-8")
-            (repo / "experiments/e0/pilot").mkdir(parents=True)
-            subprocess.run(["git", "add", "."], cwd=repo, check=True)
-            subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
-            base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
-            tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=repo, text=True).strip()
-            manifest = valid_manifest()
-            manifest["authorization_base_commit"] = base
-            manifest["authorization_base_tree"] = tree
-            manifest_path = repo / "experiments/e0/pilot/authorized.json"
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            (repo / "project-state.json").write_text('{"experiment_0_pilot_status":"AUTHORIZED_BOUNDED_PILOT"}\n', encoding="utf-8")
-            subprocess.run(["git", "add", "."], cwd=repo, check=True)
-            subprocess.run(["git", "commit", "-qm", "authorize"], cwd=repo, check=True)
-            head, runtime_tree, paths = preflight.validate_authorization_transition(repo, manifest, manifest_path)
-            self.assertNotEqual(head, base)
-            self.assertEqual(len(runtime_tree), 40)
-            self.assertIn("project-state.json", paths)
-            self.assertIn("experiments/e0/pilot/authorized.json", paths)
+    def test_obsolete_self_referential_fields_are_rejected(self):
+        manifest = valid_manifest()
+        manifest["authorization_base_commit"] = "a" * 40
+        with self.assertRaisesRegex(preflight.PreflightError, "obsolete self-referential"):
+            validate_structure(manifest)
 
-    def test_authorization_transition_rejects_runtime_code_change(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repo = Path(temp_dir) / "repo"
-            repo.mkdir()
-            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
-            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
-            subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-            (repo / "project-state.json").write_text("{}\n", encoding="utf-8")
-            (repo / "experiments/e0/pilot").mkdir(parents=True)
-            (repo / "runtime.py").write_text("safe=True\n", encoding="utf-8")
-            subprocess.run(["git", "add", "."], cwd=repo, check=True)
-            subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
-            base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
-            tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=repo, text=True).strip()
-            manifest = valid_manifest()
-            manifest["authorization_base_commit"] = base
-            manifest["authorization_base_tree"] = tree
-            manifest_path = repo / "experiments/e0/pilot/authorized.json"
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            (repo / "runtime.py").write_text("safe=False\n", encoding="utf-8")
-            subprocess.run(["git", "add", "."], cwd=repo, check=True)
-            subprocess.run(["git", "commit", "-qm", "bad transition"], cwd=repo, check=True)
-            with self.assertRaisesRegex(preflight.PreflightError, "non-allowed paths"):
-                preflight.validate_authorization_transition(repo, manifest, manifest_path)
 
-    def test_human_validator_child_does_not_create_bytecode_drift(self):
-        pycache = SCRIPTS / "__pycache__"
-        before = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)
-        proc = subprocess.run(
-            [sys.executable, "-B", "scripts/e0/validate_human_reference_approval.py", "--repo-root", str(ROOT)],
-            cwd=ROOT,
-            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        after = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)
-        self.assertEqual(after, before)
-        self.assertFalse(pycache.exists(), "child validator created __pycache__")
+class ActivationIntegrationTests(unittest.TestCase):
+    def clone_repo(self, temp: Path) -> Path:
+        repo = temp / "repo"
+        subprocess.run(["git", "clone", "-q", "--local", str(ROOT), str(repo)], check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+        return repo
+
+    def test_committed_activation_package_reaches_harmless_adapter(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            repo = self.clone_repo(temp)
+            manifest_path, request, base, base_tree, head, head_tree = make_package_and_activation(repo)
+            proc = subprocess.run(
+                [sys.executable, "scripts/e0/execute_pilot.py", "--repo-root", str(repo), "--manifest", str(manifest_path), "--request", str(request)],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("PILOT_EXECUTION_COMPLETED", proc.stdout)
+            output_root = temp / preflight.PILOT_OUTPUT_DESTINATION
+            result_files = list(output_root.glob("*/attempt-001/result.json"))
+            self.assertEqual(len(result_files), 1)
+            result = json.loads(result_files[0].read_text(encoding="utf-8"))
+            self.assertEqual(result["authorization_base_commit"], base)
+            self.assertEqual(result["authorization_base_tree"], base_tree)
+            self.assertEqual(result["activation_head_commit"], head)
+            self.assertEqual(result["activation_tree"], head_tree)
+            self.assertEqual(git(repo, "status", "--porcelain"), "")
+
+    def test_generic_authorized_state_without_package_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = self.clone_repo(Path(temp_dir))
+            state_path = repo / "project-state.json"
+            state = json.loads(state_path.read_text())
+            state["experiment_0_pilot_status"] = preflight.AUTHORIZED_PILOT_STATE
+            state["experiment_0_pilot_authorization"] = None
+            state_path.write_text(json.dumps(state) + "\n")
+            subprocess.run(["git", "add", "project-state.json"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "generic auth only"], cwd=repo, check=True)
+            manifest = valid_manifest(repo)
+            path = repo / "experiments/e0/pilot/generic.json"
+            path.write_text(json.dumps(manifest) + "\n")
+            with self.assertRaisesRegex(preflight.PreflightError, "package binding is absent"):
+                preflight.validate_canonical_authorization(repo, manifest=manifest, manifest_path=path, manifest_sha256=sha256(path))
+
+    def test_activation_must_be_direct_child_of_package_commit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = self.clone_repo(Path(temp_dir))
+            manifest_path, _, base, _, head, _ = make_package_and_activation(repo)
+            (repo / "STATUS.md").write_text((repo / "STATUS.md").read_text() + "\nintervening\n")
+            subprocess.run(["git", "add", "STATUS.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "intervening"], cwd=repo, check=True)
+            manifest = json.loads(manifest_path.read_text())
+            with self.assertRaisesRegex(preflight.PreflightError, "direct child"):
+                preflight.validate_canonical_authorization(repo, manifest=manifest, manifest_path=manifest_path, manifest_sha256=sha256(manifest_path))
+            self.assertNotEqual(base, head)
+
+    def test_activation_diff_rejects_non_activation_paths(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = self.clone_repo(Path(temp_dir))
+            manifest_path, _, _, _, _, _ = make_package_and_activation(repo, mutate_between=("scripts/e0/execute_pilot.py", "raise SystemExit('changed')\n"))
+            manifest = json.loads(manifest_path.read_text())
+            with self.assertRaisesRegex(preflight.PreflightError, "outside declared bounded authorization paths"):
+                preflight.validate_canonical_authorization(repo, manifest=manifest, manifest_path=manifest_path, manifest_sha256=sha256(manifest_path))
+
+    def test_manifest_blob_at_package_commit_must_match_canonical_sha(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = self.clone_repo(Path(temp_dir))
+            manifest_path, _, _, _, _, _ = make_package_and_activation(repo)
+            manifest = json.loads(manifest_path.read_text())
+            state_path = repo / "project-state.json"
+            state = json.loads(state_path.read_text())
+            state["experiment_0_pilot_authorization"]["manifest_sha256"] = "0" * 64
+            state_path.write_text(json.dumps(state) + "\n")
+            subprocess.run(["git", "add", "project-state.json"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "--amend", "-qm", "activate wrong hash"], cwd=repo, check=True)
+            with self.assertRaisesRegex(preflight.PreflightError, "does not match canonical owner-approved package binding"):
+                preflight.validate_canonical_authorization(repo, manifest=manifest, manifest_path=manifest_path, manifest_sha256=sha256(manifest_path))
 
 
 class RunAdapterTests(unittest.TestCase):
@@ -294,7 +328,7 @@ class RunAdapterTests(unittest.TestCase):
                     [sys.executable, str(adapter), str(pid_file)], request_text="{}", cwd=temp,
                     env={"PATH": os.environ.get("PATH", "")}, timeout_seconds=1, max_output_bytes=4096,
                 )
-            pid = int(pid_file.read_text(encoding="utf-8"))
+            pid = int(pid_file.read_text())
             deadline = time.monotonic() + 2.0
             alive = True
             while time.monotonic() < deadline:
@@ -302,12 +336,12 @@ class RunAdapterTests(unittest.TestCase):
                 if not stat_path.exists():
                     alive = False
                     break
-                parts = stat_path.read_text(encoding="utf-8", errors="replace").split()
+                parts = stat_path.read_text(errors="replace").split()
                 if len(parts) > 2 and parts[2] == "Z":
                     alive = False
                     break
                 time.sleep(0.05)
-            self.assertFalse(alive, f"adapter descendant {pid} survived bounded timeout")
+            self.assertFalse(alive)
 
 
 class ExecutePilotTests(unittest.TestCase):
@@ -334,7 +368,7 @@ class ExecutePilotTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             target = temp / "target.json"
-            target.write_text('{"safe":true}', encoding="utf-8")
+            target.write_text('{"safe":true}')
             link = temp / "request.json"
             link.symlink_to(target)
             with self.assertRaisesRegex(preflight.PreflightError, "must not be a symlink"):
@@ -348,28 +382,22 @@ class ExecutePilotTests(unittest.TestCase):
             pycache.rmdir()
         proc = subprocess.run([sys.executable, str(SCRIPTS / "execute_pilot.py"), "--help"], cwd=ROOT, text=True, capture_output=True, check=False)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertFalse(pycache.exists(), "official executor created bytecode before preflight")
+        self.assertFalse(pycache.exists())
 
-    def test_official_executor_fails_before_spawn_while_canonical_state_unauthorized(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp = Path(temp_dir)
-            marker = temp / "spawned"
-            adapter = temp / "adapter.py"
-            adapter.write_text(f"open({str(marker)!r},'w').write('spawned'); print('{{}}')", encoding="utf-8")
-            request = temp / "request.json"
-            request.write_text("{}", encoding="utf-8")
-            manifest = valid_manifest()
-            manifest["adapter_command"] = f"{sys.executable} {adapter}"
-            manifest["request_sha256"] = sha256(request)
-            manifest_path = temp / "manifest.json"
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            proc = subprocess.run(
-                [sys.executable, str(SCRIPTS / "execute_pilot.py"), "--repo-root", str(ROOT), "--manifest", str(manifest_path), "--request", str(request)],
-                cwd=ROOT, text=True, capture_output=True, check=False,
-            )
-            self.assertNotEqual(proc.returncode, 0)
-            self.assertIn("canonical project state does not authorize Pilot", proc.stderr)
-            self.assertFalse(marker.exists(), "adapter spawned despite absent canonical Pilot authority")
+    def test_human_validator_child_does_not_create_bytecode_drift(self):
+        pycache = SCRIPTS / "__pycache__"
+        before = git(ROOT, "status", "--porcelain")
+        proc = subprocess.run(
+            [sys.executable, "-B", "scripts/e0/validate_human_reference_approval.py", "--repo-root", str(ROOT)],
+            cwd=ROOT,
+            env={"PATH": os.environ.get("PATH", ""), "PYTHONDONTWRITEBYTECODE": "1"},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(git(ROOT, "status", "--porcelain"), before)
+        self.assertFalse(pycache.exists())
 
 
 if __name__ == "__main__":
