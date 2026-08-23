@@ -2,7 +2,7 @@
 
 > **Статус документа:** `DRAFT — NOT ADOPTED`  
 > **Decision ID:** `OD-PILOT-01`  
-> **Версия:** `0.6-draft`  
+> **Версия:** `0.7-draft`  
 > **Authority:** repository owner only
 
 ## 1. Решение
@@ -38,9 +38,10 @@ Pilot остаётся `NOT_AUTHORIZED`, пока одновременно не 
     - diff `A..B` разрешён только для явно объявленных bounded governance paths, являющихся subset: `project-state.json`, `STATUS.md`, `docs/ai/CURRENT_STATE.md`, `docs/research/OD_PILOT_01_DRAFT.md`;
     - `project-state.json` обязательно должен быть изменён B;
     - любой code/protocol/fixture/reference/evaluator/prompt/run-config/manifest drift между A и B fail-closed запрещён.
-12. Preflight дополнительно доказывает, что manifest уже существовал в A как regular non-executable Git blob (`100644`) и его bytes в A имеют exact canonical SHA-256.
-13. Фактический activation `HEAD=B` и `tree(B)` не находятся внутри manifest. Они вычисляются после проверки direct-child transition и записываются в Pilot reservation/result receipt вместе с A/tree(A).
-14. Generic `AUTHORIZED_BOUNDED_PILOT` без exact canonical package binding fail-closed отклоняется.
+12. Preflight доказывает, что manifest уже существовал в A как regular non-executable Git blob (`100644`) и его bytes в A имеют exact canonical SHA-256.
+13. Preflight также доказывает, что canonical authority в B действительно материализована **в Git tree самого B**: `project-state.json` в `HEAD` обязан быть regular non-executable `100644 blob`; canonical state парсится из exact `git show HEAD:project-state.json` bytes; working-tree `project-state.json` обязан быть regular non-symlink file и byte-for-byte совпадать с committed B blob.
+14. Фактический activation `HEAD=B` и `tree(B)` не находятся внутри manifest. Они вычисляются после проверки direct-child transition и записываются в Pilot reservation/result receipt вместе с A/tree(A).
+15. Generic `AUTHORIZED_BOUNDED_PILOT` без exact canonical package binding fail-closed отклоняется.
 
 Текущий canonical state остаётся:
 
@@ -111,6 +112,8 @@ Future activation commit B должен материализовать record с
 
 `activation_paths` могут включать только реально необходимые governance mirrors из bounded allowlist. Manifest никогда не является activation path.
 
+Canonical authority record считается действительным только если он получен из exact `project-state.json` Git blob самого activation commit B. Symlink, submodule, executable mode, отсутствующий blob, внешний mutable файл или working-tree bytes, отличающиеся от B blob, fail-closed запрещены.
+
 ## 6. Official execution path
 
 Только:
@@ -122,16 +125,18 @@ Future activation commit B должен материализовать record с
 До spawn executor проверяет:
 
 1. strict-clean worktree;
-2. canonical Pilot status + exact manifest path/SHA binding;
-3. exact A/tree(A) из canonical authorization record;
-4. manifest существует в A как `100644 blob` и его bytes в A соответствуют canonical SHA-256;
-5. current activation HEAD имеет ровно одного parent и этот parent равен A;
-6. diff `A..B` не содержит ничего кроме declared bounded activation paths;
-7. `project-state.json` действительно изменён в B;
-8. human-reference approval validator;
-9. повторный strict-clean worktree после child validator;
-10. exact request bytes SHA-256;
-11. ещё один strict-clean worktree непосредственно перед output reservation и перед adapter spawn.
+2. `project-state.json` существует в activation HEAD как exact `100644 blob`;
+3. canonical state парсится из `git show HEAD:project-state.json`, а working-tree файл non-symlink и byte-identical этому blob;
+4. canonical Pilot status + exact manifest path/SHA binding;
+5. exact A/tree(A) из canonical authorization record;
+6. manifest существует в A как `100644 blob` и его bytes в A соответствуют canonical SHA-256;
+7. current activation HEAD имеет ровно одного parent и этот parent равен A;
+8. diff `A..B` не содержит ничего кроме declared bounded activation paths;
+9. `project-state.json` действительно изменён в B;
+10. human-reference approval validator;
+11. повторный strict-clean worktree после child validator;
+12. exact request bytes SHA-256;
+13. ещё один strict-clean worktree непосредственно перед output reservation и перед adapter spawn.
 
 Human-reference child запускается с `python -B` и `PYTHONDONTWRITEBYTECODE=1`, чтобы control path не создавал `__pycache__` drift.
 
@@ -162,6 +167,7 @@ Fail closed если:
 
 - approval validation fails;
 - canonical Pilot authorization отсутствует/не совпадает с package;
+- `project-state.json` в B отсутствует, не `100644 blob`, является symlink/другим Git type/mode или working-tree bytes отличаются от committed B blob;
 - manifest path/SHA не совпадают;
 - A/tree(A) invalid;
 - manifest отсутствует в A, имеет неправильный Git mode/type или bytes/SHA mismatch;
@@ -197,7 +203,7 @@ Fail closed если:
 До отдельной explicit owner adoption + canonical activation transition статус остаётся `DRAFT — NOT ADOPTED` / `Pilot NOT_AUTHORIZED`.
 
 ```text
-I, <GitHub login>, adopt OD-PILOT-01 v0.6.
+I, <GitHub login>, adopt OD-PILOT-01 v0.7.
 
 Authorized bounded Pilot package:
 - authorization_id: <unique ID>;
@@ -217,7 +223,7 @@ Authorized bounded Pilot package:
 - execution posture: UNCONTROLLED_LOCAL_ADVISORY;
 - output destination: .velantrim-continuum-pilot-runs.
 
-Activation must be a separately reviewed direct child B of A and may only materialize canonical authorization/governance mirrors.
+Activation must be a separately reviewed direct child B of A and may only materialize canonical authorization/governance mirrors. Canonical authority bytes must be committed as B's regular `100644` project-state.json blob; external/symlink authority is invalid.
 
 Pilot remains PILOT — NOT EVIDENCE.
 Evidence Lock remains NOT_CREATED.
