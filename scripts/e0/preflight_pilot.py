@@ -59,6 +59,51 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_canonical_project_state(root: Path) -> dict[str, Any]:
+    """Load authority bytes from the current HEAD blob and bind the worktree to them."""
+    head = run_git(root, "rev-parse", "HEAD")
+    entry = run_git(root, "ls-tree", head, "--", PROJECT_STATE_PATH)
+    if not entry:
+        raise PreflightError("canonical project-state.json is absent from activation HEAD")
+    metadata, _, returned_path = entry.partition("\t")
+    parts = metadata.split()
+    if len(parts) != 3 or parts[0] != "100644" or parts[1] != "blob" or returned_path != PROJECT_STATE_PATH:
+        raise PreflightError("canonical project-state.json must be a regular non-executable Git blob at activation HEAD")
+
+    proc = subprocess.run(
+        ["git", "show", f"{head}:{PROJECT_STATE_PATH}"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise PreflightError("cannot read canonical project-state.json blob from activation HEAD")
+    committed_bytes = proc.stdout
+
+    working_path = root / PROJECT_STATE_PATH
+    if working_path.is_symlink() or not working_path.is_file():
+        raise PreflightError("working project-state.json must be a regular non-symlink file")
+    resolved = working_path.resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise PreflightError("working project-state.json escapes repository root") from exc
+    try:
+        working_bytes = working_path.read_bytes()
+    except OSError as exc:
+        raise PreflightError(f"cannot read working project-state.json: {exc}") from exc
+    if working_bytes != committed_bytes:
+        raise PreflightError("working project-state.json bytes do not match activation HEAD Git blob")
+
+    try:
+        value = json.loads(committed_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PreflightError(f"canonical project-state.json Git blob is not valid UTF-8 JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise PreflightError("canonical project-state.json Git blob must contain a JSON object")
+    return value
+
+
 def sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
@@ -257,7 +302,7 @@ def validate_canonical_authorization(
     manifest_path: Path | None = None,
     manifest_sha256: str | None = None,
 ) -> dict[str, Any]:
-    state = load_json(root / PROJECT_STATE_PATH)
+    state = load_canonical_project_state(root)
     status = state.get("experiment_0_pilot_status")
     if status != AUTHORIZED_PILOT_STATE:
         raise PreflightError(
