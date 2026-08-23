@@ -20,6 +20,7 @@
 | Approved Capture Gold | ✅ `capture-gold.v0.1.json` — `HUMAN_APPROVED` |
 | Approved Transfer Oracle | ✅ `transfer-oracle.v0.1.json` — `HUMAN_APPROVED` |
 | Harness-validation Pilot | ⛔ `NOT_AUTHORIZED`; not run |
+| Pilot package authorization | ⛔ `null`; no exact manifest path/SHA authorized |
 | Evidence readiness | ❌ False |
 | Evidence Lock | ❌ Not created |
 | E0-C Capture Isolation evidence | ❌ Not started / not authorized |
@@ -82,7 +83,7 @@ Later commits through the approval base do not modify those seven review-snapsho
 ## Current authority boundary
 
 - GitHub owns observable lifecycle facts such as PR state, merge SHA, Issue state, and branch HEAD.
-- [`project-state.json`](project-state.json) owns selected semantic project state and authorization flags.
+- [`project-state.json`](project-state.json) owns selected semantic project state and authorization flags. A future bounded Pilot requires canonical `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT` plus an exact owner-authorized package/activation binding: immutable manifest blob in package commit A, direct-child activation commit B, exact manifest path/SHA and A/tree(A), bounded activation paths, and canonical authority bytes committed as B's regular non-executable `100644` `project-state.json` Git blob. The current package authorization slot is `null`.
 - [`docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`](docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md) owns Experiment 0 semantics.
 - [`docs/research/E0_CORRESPONDENCE_LAW_V0_3.md`](docs/research/E0_CORRESPONDENCE_LAW_V0_3.md) owns the current Capture association measurement law.
 - `human-reference-approval.v0.2.json` records explicit human-reference approval provenance and exact reviewed bindings.
@@ -90,4 +91,4 @@ Later commits through the approval base do not modify those seven review-snapsho
 
 ## Boundary
 
-`Human reference approved ≠ Pilot authorized · Pilot ≠ Evidence · Evidence Lock ≠ Evidence authorization · CI green ≠ scientific validity · research ≠ production runtime.`
+`Human reference approved ≠ Pilot authorized · Pilot package slot present ≠ Pilot authorized · Pilot ≠ Evidence · Evidence Lock ≠ Evidence authorization · CI green ≠ scientific validity · research ≠ production runtime.`

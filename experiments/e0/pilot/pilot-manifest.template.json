@@ -1,0 +1,50 @@
+{
+  "run_type": "PILOT",
+  "label": "PILOT — NOT EVIDENCE",
+  "owner_decision_id": "OD-PILOT-01",
+  "owner_decision_status": "DRAFT — NOT ADOPTED",
+  "owner_github_login": "<owner-login>",
+  "owner_adopted_at": "<UTC timestamp only after explicit adoption>",
+  "activation_policy": "DIRECT_CHILD_ONLY",
+  "human_approval": {
+    "path": "experiments/e0/approval/human-reference-approval.v0.2.json",
+    "sha256": "<sha256>"
+  },
+  "approved_references": [
+    {
+      "path": "experiments/e0/gold/approved/capture-gold.v0.1.json",
+      "sha256": "9b806fdb44ff84ba0456d0dd480c328398915ca40f9de7f9e0232452678e2025"
+    }
+  ],
+  "fixture_or_scenario_ids": ["<PILOT-only ID>"],
+  "request_sha256": "<sha256 of exact authorized request JSON>",
+  "execution_posture": "UNCONTROLLED_LOCAL_ADVISORY",
+  "isolation": {
+    "isolation_enforcement": "NOT_ENFORCED",
+    "network_isolation": "NOT_ENFORCED",
+    "filesystem_isolation": "NOT_ENFORCED",
+    "process_isolation": "NOT_ENFORCED"
+  },
+  "limits": {
+    "timeout_seconds": 120,
+    "max_output_bytes": 1048576,
+    "max_runs": 1
+  },
+  "evidence_lock": {
+    "status": "NOT_CREATED",
+    "sha256": null
+  },
+  "model": {
+    "provider": "<provider>",
+    "identifier": "<exact model/version>",
+    "settings": {}
+  },
+  "credentials": {
+    "profile": "<credential profile reference; no secret>",
+    "scope": "<minimal required scope>"
+  },
+  "adapter_command": "<exact adapter command>",
+  "adapter_cwd": ".",
+  "environment_allowlist": [],
+  "output_destination": ".velantrim-continuum-pilot-runs"
+}

@@ -61,6 +61,7 @@
     "b01_specific_tree_entry_bypass": "CLOSED_ON_REVIEWED_HEAD"
   },
   "experiment_0_pilot_status": "NOT_AUTHORIZED",
+  "experiment_0_pilot_authorization": null,
   "experiment_0_evidence_ready": false,
   "experiment_0_evidence_lock_sha": null,
   "e0c_started": false,
