@@ -37,7 +37,7 @@ Selected semantic machine-readable values live in [`project-state.json`](../../p
 2. Preserve the human-approved v0.1 Capture Gold and Transfer Oracle plus the v0.2 approval provenance as the authoritative Experiment 0 human reference.
 3. Keep the historical candidate artifacts unchanged as `AI_PROPOSED_DRAFT`; approval does not rewrite their history.
 4. **STOP at the Pilot authorization boundary.** Human-reference approval does not itself authorize `PILOT — NOT EVIDENCE`.
-5. A future bounded Pilot requires a separate owner GO, canonical `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT`, and a canonical authorization record binding the exact approved manifest path and SHA-256. The current authorization slot remains `null`.
+5. A future bounded Pilot requires a separate owner GO, canonical `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT`, and a canonical constructible package/activation binding: immutable manifest blob in package commit A; direct-child activation commit B; exact manifest path/SHA plus A/tree(A); bounded activation paths; and canonical authority bytes materialized as B's regular non-executable `100644` `project-state.json` Git blob. The current authorization slot remains `null`.
 6. Only after those separate reviewable changes may a Pilot run occur, and every Pilot output must remain explicitly labelled `PILOT — NOT EVIDENCE`.
 7. After a separately authorized Pilot: fix Pilot defects; if locked semantics change, version/review before lock.
 8. Evidence Lock may be created only after its own readiness conditions are met; it is currently `NOT_CREATED`.
@@ -79,7 +79,7 @@ Do not claim that:
 
 - GitHub lifecycle facts → verify live GitHub.
 - Semantic project state / authorization flags → [`project-state.json`](../../project-state.json).
-- A future Pilot authorization must bind both the canonical Pilot status and an exact repository manifest path/SHA-256; neither can substitute for the other.
+- A future Pilot authorization must bind canonical Pilot status to the exact constructible A→B package/activation chain: manifest blob in A, exact manifest path/SHA and A/tree(A), direct-child B with bounded activation paths, and canonical authority committed as B's exact `100644` `project-state.json` blob; none of those elements can substitute for the others.
 - Experiment semantics → canonical preregistration.
 - Human reference approval → `experiments/e0/approval/human-reference-approval.v0.2.json` plus the exact Issue #9 human decision record.
 - Capture association measurement semantics → [`E0_CORRESPONDENCE_LAW_V0_3.md`](../research/E0_CORRESPONDENCE_LAW_V0_3.md).
