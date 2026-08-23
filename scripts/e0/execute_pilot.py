@@ -20,6 +20,7 @@ from preflight_pilot import (
     ensure_clean_worktree,
     run_git,
     sha256_bytes,
+    validate_canonical_authorization,
     validate_human_approval,
     validate_manifest,
 )
@@ -161,6 +162,7 @@ def main() -> int:
 
     attempt_dir: Path | None = None
     try:
+        ensure_clean_worktree(root)
         manifest_bytes = read_regular_file_once(manifest_path, label="Pilot manifest")
         manifest = parse_json_object(manifest_bytes, label="Pilot manifest")
         manifest_sha = sha256_bytes(manifest_bytes)
@@ -173,10 +175,16 @@ def main() -> int:
             check_git=True,
             check_authority_state=True,
         )
+        authorization = validate_canonical_authorization(
+            root,
+            manifest=manifest,
+            manifest_path=manifest_path,
+            manifest_sha256=manifest_sha,
+        )
+        provenance = authorization["_verified_activation"]
+
         validate_human_approval(root)
         ensure_clean_worktree(root)
-        runtime_head = run_git(root, "rev-parse", "HEAD")
-        runtime_tree = run_git(root, "rev-parse", "HEAD^{tree}")
 
         request_bytes = read_regular_file_once(request_path, label="Pilot request")
         expected_request_hash = manifest.get("request_sha256")
@@ -186,6 +194,7 @@ def main() -> int:
 
         limits = manifest["limits"]
         max_runs = limits["max_runs"]
+        ensure_clean_worktree(root)
         output_root = ensure_output_root(root)
         attempt_number, attempt_dir = reserve_attempt(output_root, manifest_sha, max_runs)
 
@@ -195,10 +204,10 @@ def main() -> int:
             attempt_dir / "reservation.json",
             {
                 "package_sha256": manifest_sha,
-                "authorization_base_commit": manifest["authorization_base_commit"],
-                "authorization_base_tree": manifest["authorization_base_tree"],
-                "runtime_head_commit": runtime_head,
-                "runtime_tree": runtime_tree,
+                "authorization_base_commit": provenance["authorization_base_commit"],
+                "authorization_base_tree": provenance["authorization_base_tree"],
+                "activation_head_commit": provenance["activation_head_commit"],
+                "activation_tree": provenance["activation_tree"],
                 "attempt": attempt_number,
                 "max_runs": max_runs,
                 "status": "RESERVED",
@@ -250,10 +259,10 @@ def main() -> int:
                 "status": "COMPLETED",
                 "label": "PILOT — NOT EVIDENCE",
                 "package_sha256": manifest_sha,
-                "authorization_base_commit": manifest["authorization_base_commit"],
-                "authorization_base_tree": manifest["authorization_base_tree"],
-                "runtime_head_commit": runtime_head,
-                "runtime_tree": runtime_tree,
+                "authorization_base_commit": provenance["authorization_base_commit"],
+                "authorization_base_tree": provenance["authorization_base_tree"],
+                "activation_head_commit": provenance["activation_head_commit"],
+                "activation_tree": provenance["activation_tree"],
                 "attempt": attempt_number,
                 "request_sha256": sha256_bytes(request_bytes),
                 "response_sha256": sha256_bytes(response_payload),
