@@ -2,7 +2,7 @@
 
 > **Статус документа:** `DRAFT — NOT ADOPTED`  
 > **Decision ID:** `OD-PILOT-01`  
-> **Версия:** `0.7-draft`  
+> **Версия:** `0.8-draft`  
 > **Authority:** repository owner only
 
 ## 1. Решение
@@ -27,10 +27,13 @@ Pilot остаётся `NOT_AUTHORIZED`, пока одновременно не 
 8. Exact request bytes связаны SHA-256 в manifest.
 9. Поддерживаемый posture: только `UNCONTROLLED_LOCAL_ADVISORY`.
 10. Evidence Lock остаётся `NOT_CREATED`.
-11. Future owner authorization использует **constructible two-commit Git binding без self-reference**:
-    - **package commit A** содержит immutable Pilot manifest по canonical repository path;
-    - manifest **не содержит SHA или tree собственного commit A** и не содержит будущий activation HEAD;
-    - после создания A вычисляются `A`, `tree(A)` и SHA-256 exact manifest bytes;
+11. Future owner authorization использует **constructible pre-A adoption + two-commit Git binding без self-reference**:
+    - сначала полностью pin-ятся exact candidate manifest/request/configuration bytes и все package bindings;
+    - затем владелец отдельно adopts `OD-PILOT-01` для exact canonical manifest path + SHA-256 и exact pinned scope **до создания package commit A**;
+    - adopted manifest bytes уже содержат `owner_decision_id = OD-PILOT-01` и `owner_decision_status = ADOPTED`;
+    - **package commit A** затем коммитит именно эти immutable adopted manifest bytes по canonical repository path;
+    - pre-A adoption record **не требует и не содержит SHA/tree будущего A**;
+    - после создания A вычисляются `A`, `tree(A)` и повторно проверяется SHA-256 exact committed manifest bytes;
     - **activation commit B** обязан быть единственным direct child A;
     - только B материализует canonical `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT` и package authorization record;
     - canonical record в B связывает exact `manifest_path`, exact `manifest_sha256`, `authorization_base_commit = A`, `authorization_base_tree = tree(A)`, `activation_policy = DIRECT_CHILD_ONLY` и bounded `activation_paths`;
@@ -38,9 +41,9 @@ Pilot остаётся `NOT_AUTHORIZED`, пока одновременно не 
     - diff `A..B` разрешён только для явно объявленных bounded governance paths, являющихся subset: `project-state.json`, `STATUS.md`, `docs/ai/CURRENT_STATE.md`, `docs/research/OD_PILOT_01_DRAFT.md`;
     - `project-state.json` обязательно должен быть изменён B;
     - любой code/protocol/fixture/reference/evaluator/prompt/run-config/manifest drift между A и B fail-closed запрещён.
-12. Preflight доказывает, что manifest уже существовал в A как regular non-executable Git blob (`100644`) и его bytes в A имеют exact canonical SHA-256.
+12. Preflight доказывает, что manifest уже существовал в A как regular non-executable Git blob (`100644`) и его bytes в A имеют exact canonical SHA-256, ранее adopted владельцем.
 13. Preflight также доказывает, что canonical authority в B действительно материализована **в Git tree самого B**: `project-state.json` в `HEAD` обязан быть regular non-executable `100644 blob`; canonical state парсится из exact `git show HEAD:project-state.json` bytes; working-tree `project-state.json` обязан быть regular non-symlink file и byte-for-byte совпадать с committed B blob.
-14. Фактический activation `HEAD=B` и `tree(B)` не находятся внутри manifest. Они вычисляются после проверки direct-child transition и записываются в Pilot reservation/result receipt вместе с A/tree(A).
+14. Фактические `A`, `tree(A)`, activation `HEAD=B` и `tree(B)` не находятся внутри manifest. `A/tree(A)` вычисляются после package commit; B canonical authorization связывает их с ранее adopted manifest; B/tree(B) вычисляются после direct-child transition и записываются в Pilot reservation/result receipt вместе с A/tree(A).
 15. Generic `AUTHORIZED_BOUNDED_PILOT` без exact canonical package binding fail-closed отклоняется.
 
 Текущий canonical state остаётся:
@@ -89,7 +92,7 @@ Manifest минимум содержит:
 
 Manifest **не содержит** `execution_head_commit`, `execution_tree`, `authorization_base_commit` или `authorization_base_tree`: такие поля создают или возвращают self-referential identity coupling и fail-closed запрещены.
 
-Manifest necessary but not sufficient authority. Только будущий canonical activation record в отдельном B hash-bind exact manifest blob from A и A/tree(A).
+Manifest necessary but not sufficient authority. Owner adoption до A связывается с exact canonical manifest path/SHA и pinned scope, но **не** с будущим A/tree(A). После commit A только будущий canonical activation record в отдельном B hash-bind exact manifest blob from A и A/tree(A).
 
 ## 5. Future canonical authorization record
 
@@ -100,7 +103,7 @@ Future activation commit B должен материализовать record с
   "status": "AUTHORIZED_BOUNDED_PILOT_PACKAGE",
   "authorization_id": "<unique ID>",
   "manifest_path": "experiments/e0/pilot/packages/<package>.json",
-  "manifest_sha256": "<exact lowercase SHA-256 of manifest bytes in A>",
+  "manifest_sha256": "<exact lowercase SHA-256 of adopted manifest bytes committed in A>",
   "authorization_base_commit": "<package commit A>",
   "authorization_base_tree": "<tree(A)>",
   "activation_policy": "DIRECT_CHILD_ONLY",
@@ -129,7 +132,7 @@ Canonical authority record считается действительным то�
 3. canonical state парсится из `git show HEAD:project-state.json`, а working-tree файл non-symlink и byte-identical этому blob;
 4. canonical Pilot status + exact manifest path/SHA binding;
 5. exact A/tree(A) из canonical authorization record;
-6. manifest существует в A как `100644 blob` и его bytes в A соответствуют canonical SHA-256;
+6. manifest существует в A как `100644 blob` и его bytes в A соответствуют canonical SHA-256, для которого был записан owner adoption;
 7. current activation HEAD имеет ровно одного parent и этот parent равен A;
 8. diff `A..B` не содержит ничего кроме declared bounded activation paths;
 9. `project-state.json` действительно изменён в B;
@@ -149,7 +152,7 @@ Reservation/result receipt фиксируют:
 - `activation_head_commit = B`;
 - `activation_tree = tree(B)`.
 
-Таким образом manifest не должен заранее знать commit, который материализует authorization.
+Таким образом owner adoption и manifest не должны заранее знать commit, который материализует package или canonical authorization.
 
 ## 7. Output and process containment
 
@@ -169,6 +172,8 @@ Fail closed если:
 - canonical Pilot authorization отсутствует/не совпадает с package;
 - `project-state.json` в B отсутствует, не `100644 blob`, является symlink/другим Git type/mode или working-tree bytes отличаются от committed B blob;
 - manifest path/SHA не совпадают;
+- owner adoption отсутствует или относится к другим manifest path/SHA/pinned scope;
+- committed manifest bytes в A отличаются от exact adopted manifest bytes;
 - A/tree(A) invalid;
 - manifest отсутствует в A, имеет неправильный Git mode/type или bytes/SHA mismatch;
 - B не является direct child A;
@@ -188,6 +193,7 @@ Fail closed если:
 
 Даже будущая adoption OD-PILOT-01 не создаёт автоматически:
 
+- canonical Pilot execution authorization до separately reviewed A→B activation;
 - Evidence Lock;
 - E0-C Evidence;
 - E0-T Evidence;
@@ -196,34 +202,45 @@ Fail closed если:
 - event sourcing requirement;
 - ecosystem integration.
 
-`Human Reference Approved ≠ Pilot ≠ Evidence ≠ Production Authorization`.
+`Human Reference Approved ≠ OD adoption ≠ canonical Pilot activation ≠ Pilot ≠ Evidence ≠ Production Authorization`.
 
-## 10. Owner adoption record
+## 10. Owner adoption record — pre-A, package-intent bound
 
-До отдельной explicit owner adoption + canonical activation transition статус остаётся `DRAFT — NOT ADOPTED` / `Pilot NOT_AUTHORIZED`.
+До отдельной explicit owner adoption + package A + separately reviewed canonical activation transition статус остаётся `DRAFT — NOT ADOPTED` / `Pilot NOT_AUTHORIZED`.
+
+Owner adoption происходит **после полного pin exact candidate contents, но до commit package A**. Поэтому adoption record связывает владельца с exact manifest path/SHA и exact pinned package intent, но **не требует будущие `A` или `tree(A)`**.
+
+После adoption exact adopted manifest bytes нельзя изменять. Package A должен закоммитить именно эти bytes как regular non-executable `100644` Git blob. После commit вычисляются A/tree(A); затем independent review A; только после APPROVE разрешено создать direct-child B, который canonical-bind A/tree(A) к тому же manifest path/SHA.
 
 ```text
-I, <GitHub login>, adopt OD-PILOT-01 v0.7.
+I, <GitHub login>, adopt OD-PILOT-01 v0.8 for the exact bounded Pilot package intent below.
 
-Authorized bounded Pilot package:
+Owner adoption scope:
 - authorization_id: <unique ID>;
-- package commit A: <SHA>;
-- package tree: <tree(A)>;
-- activation policy: DIRECT_CHILD_ONLY;
-- activation paths: <bounded governance paths>;
 - canonical manifest path: <repository-relative path under experiments/e0/pilot/>;
-- canonical manifest SHA-256: <SHA-256 of exact manifest bytes in A>;
+- canonical manifest SHA-256: <SHA-256 of exact adopted manifest bytes to be committed unchanged in A>;
 - fixtures/scenarios: <PILOT-only IDs>;
 - request SHA-256: <SHA-256>;
 - approved reference paths/hashes: <paths + SHA-256>;
 - provider/model/settings: <details>;
+- tool policy: <NO_TOOLS | exact minimal allowlist | explicit N/A when no tool surface exists>;
 - credential profile/scope: <reference only; no secrets>;
 - adapter command/cwd/environment allowlist: <details>;
 - timeout/output cap/max runs/budget: <limits>;
 - execution posture: UNCONTROLLED_LOCAL_ADVISORY;
 - output destination: .velantrim-continuum-pilot-runs.
 
-Activation must be a separately reviewed direct child B of A and may only materialize canonical authorization/governance mirrors. Canonical authority bytes must be committed as B's regular `100644` project-state.json blob; external/symlink authority is invalid.
+This adoption does NOT know or require future package commit A/tree(A), does NOT create canonical Pilot authorization, and does NOT authorize execution by itself.
+
+Next required sequence:
+1. commit the exact adopted manifest bytes as package A;
+2. compute A/tree(A) and verify the committed manifest path/SHA;
+3. independently review A;
+4. only after A APPROVE, construct direct-child activation B;
+5. B must bind exact A/tree(A) + manifest path/SHA and may only materialize bounded canonical authorization/governance mirrors;
+6. independently review B/A→B before any execution becomes eligible.
+
+Canonical authority bytes must be committed as B's regular `100644` project-state.json blob; external/symlink authority is invalid.
 
 Pilot remains PILOT — NOT EVIDENCE.
 Evidence Lock remains NOT_CREATED.
