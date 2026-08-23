@@ -7,7 +7,7 @@
 > **Execution posture:** `UNCONTROLLED_LOCAL_ADVISORY`  
 > **Owner:** `velantrian`  
 > **Owner decision source:** explicit repository-owner instruction in the active Continuum workflow  
-> **UTC timestamp:** `2026-08-23T21:06:00Z`  
+> **UTC recorded-at timestamp:** `2026-08-23T21:07:00Z`  
 > **Authoritative main at decision:** `6bd61c17229d75792d1a6d510c197142d8a7b322`  
 > **Authoritative main tree:** `15772f4e1c9f81b47e6494f7d786ded53f9ed946`
 
