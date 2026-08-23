@@ -2,7 +2,7 @@
 
 > **Статус документа:** `DRAFT — NOT ADOPTED`  
 > **Decision ID:** `OD-PILOT-01`  
-> **Версия:** `0.5-draft`  
+> **Версия:** `0.6-draft`  
 > **Authority:** repository owner only
 
 ## 1. Решение
@@ -27,14 +27,20 @@ Pilot остаётся `NOT_AUTHORIZED`, пока одновременно не 
 8. Exact request bytes связаны SHA-256 в manifest.
 9. Поддерживаемый posture: только `UNCONTROLLED_LOCAL_ADVISORY`.
 10. Evidence Lock остаётся `NOT_CREATED`.
-11. Future owner authorization использует **non-circular two-stage Git binding**:
-    - manifest фиксирует `authorization_base_commit` и `authorization_base_tree` — последний pre-authorization baseline;
-    - canonical `project-state.json` фиксирует exact `manifest_path`, `manifest_sha256`, тот же base commit/tree и `AUTHORIZED_BOUNDED_PILOT`;
-    - текущий runtime `HEAD` обязан быть base или его descendant;
-    - diff `authorization_base_commit..HEAD` разрешён только для bounded authorization-transition paths: exact manifest, `project-state.json`, `STATUS.md`, `docs/ai/CURRENT_STATE.md`, `docs/research/OD_PILOT_01_DRAFT.md`;
-    - любой runtime/protocol/fixture/reference/code drift в этом переходе fail-closed запрещён.
-12. Фактический runtime HEAD/tree не находятся внутри hash-bound manifest, чтобы исключить self-referential fixed-point. Они вычисляются после проверки transition и записываются в Pilot reservation/result receipt.
-13. Generic `AUTHORIZED_BOUNDED_PILOT` без exact package binding fail-closed отклоняется.
+11. Future owner authorization использует **constructible two-commit Git binding без self-reference**:
+    - **package commit A** содержит immutable Pilot manifest по canonical repository path;
+    - manifest **не содержит SHA или tree собственного commit A** и не содержит будущий activation HEAD;
+    - после создания A вычисляются `A`, `tree(A)` и SHA-256 exact manifest bytes;
+    - **activation commit B** обязан быть единственным direct child A;
+    - только B материализует canonical `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT` и package authorization record;
+    - canonical record в B связывает exact `manifest_path`, exact `manifest_sha256`, `authorization_base_commit = A`, `authorization_base_tree = tree(A)`, `activation_policy = DIRECT_CHILD_ONLY` и bounded `activation_paths`;
+    - manifest path не входит в activation paths и не может меняться между A и B;
+    - diff `A..B` разрешён только для явно объявленных bounded governance paths, являющихся subset: `project-state.json`, `STATUS.md`, `docs/ai/CURRENT_STATE.md`, `docs/research/OD_PILOT_01_DRAFT.md`;
+    - `project-state.json` обязательно должен быть изменён B;
+    - любой code/protocol/fixture/reference/evaluator/prompt/run-config/manifest drift между A и B fail-closed запрещён.
+12. Preflight дополнительно доказывает, что manifest уже существовал в A как regular non-executable Git blob (`100644`) и его bytes в A имеют exact canonical SHA-256.
+13. Фактический activation `HEAD=B` и `tree(B)` не находятся внутри manifest. Они вычисляются после проверки direct-child transition и записываются в Pilot reservation/result receipt вместе с A/tree(A).
+14. Generic `AUTHORIZED_BOUNDED_PILOT` без exact canonical package binding fail-closed отклоняется.
 
 Текущий canonical state остаётся:
 
@@ -66,8 +72,7 @@ Manifest минимум содержит:
 - `label = PILOT — NOT EVIDENCE`;
 - `owner_decision_id = OD-PILOT-01`;
 - `owner_decision_status = ADOPTED`;
-- exact `authorization_base_commit`;
-- exact `authorization_base_tree`;
+- `activation_policy = DIRECT_CHILD_ONLY`;
 - human approval path/hash;
 - approved Gold/Oracle path/hash;
 - Pilot-only IDs;
@@ -81,9 +86,32 @@ Manifest минимум содержит:
 - `output_destination = .velantrim-continuum-pilot-runs`;
 - `evidence_lock = {status: NOT_CREATED, sha256: null}`.
 
-Manifest necessary but not sufficient authority. Canonical state отдельно hash-bind exact manifest и base identity.
+Manifest **не содержит** `execution_head_commit`, `execution_tree`, `authorization_base_commit` или `authorization_base_tree`: такие поля создают или возвращают self-referential identity coupling и fail-closed запрещены.
 
-## 5. Official execution path
+Manifest necessary but not sufficient authority. Только будущий canonical activation record в отдельном B hash-bind exact manifest blob from A и A/tree(A).
+
+## 5. Future canonical authorization record
+
+Future activation commit B должен материализовать record следующей формы:
+
+```json
+{
+  "status": "AUTHORIZED_BOUNDED_PILOT_PACKAGE",
+  "authorization_id": "<unique ID>",
+  "manifest_path": "experiments/e0/pilot/packages/<package>.json",
+  "manifest_sha256": "<exact lowercase SHA-256 of manifest bytes in A>",
+  "authorization_base_commit": "<package commit A>",
+  "authorization_base_tree": "<tree(A)>",
+  "activation_policy": "DIRECT_CHILD_ONLY",
+  "activation_paths": [
+    "project-state.json"
+  ]
+}
+```
+
+`activation_paths` могут включать только реально необходимые governance mirrors из bounded allowlist. Manifest никогда не является activation path.
+
+## 6. Official execution path
 
 Только:
 
@@ -93,22 +121,32 @@ Manifest necessary but not sufficient authority. Canonical state отдельн�
 
 До spawn executor проверяет:
 
-1. canonical Pilot status + exact manifest path/SHA binding;
-2. manifest base commit/tree = canonical base commit/tree;
-3. current HEAD descendant relation к base;
-4. diff base..HEAD содержит только authorization-transition allowlist paths;
-5. strict-clean worktree;
-6. human-reference approval validator;
-7. повторный strict-clean worktree после child validator;
-8. exact request bytes SHA-256.
+1. strict-clean worktree;
+2. canonical Pilot status + exact manifest path/SHA binding;
+3. exact A/tree(A) из canonical authorization record;
+4. manifest существует в A как `100644 blob` и его bytes в A соответствуют canonical SHA-256;
+5. current activation HEAD имеет ровно одного parent и этот parent равен A;
+6. diff `A..B` не содержит ничего кроме declared bounded activation paths;
+7. `project-state.json` действительно изменён в B;
+8. human-reference approval validator;
+9. повторный strict-clean worktree после child validator;
+10. exact request bytes SHA-256;
+11. ещё один strict-clean worktree непосредственно перед output reservation и перед adapter spawn.
 
-Human-reference child запускается с `python -B` и `PYTHONDONTWRITEBYTECODE=1`, чтобы сам control path не создавал `__pycache__` drift.
+Human-reference child запускается с `python -B` и `PYTHONDONTWRITEBYTECODE=1`, чтобы control path не создавал `__pycache__` drift.
 
 Manifest/request должны быть regular non-symlink files. Request читается один раз; те же bytes хэшируются, парсятся, записываются и передаются adapter.
 
-Фактические `runtime_head_commit` и `runtime_tree` вычисляются после preflight и фиксируются в reservation/result receipt вместе с base identity.
+Reservation/result receipt фиксируют:
 
-## 6. Output and process containment
+- `authorization_base_commit = A`;
+- `authorization_base_tree = tree(A)`;
+- `activation_head_commit = B`;
+- `activation_tree = tree(B)`.
+
+Таким образом manifest не должен заранее знать commit, который материализует authorization.
+
+## 7. Output and process containment
 
 Outputs:
 
@@ -118,16 +156,19 @@ Output root/package/attempt должны быть реальными directories
 
 `max_runs` технически ограничивается atomic attempt reservation. Adapter работает в отдельной process group/session; timeout/output-cap/final cleanup завершают descendants. Это lifecycle containment, не sandbox.
 
-## 7. Stop rules
+## 8. Stop rules
 
 Fail closed если:
 
 - approval validation fails;
 - canonical Pilot authorization отсутствует/не совпадает с package;
-- base commit/tree не совпадают;
-- runtime HEAD не descendant base;
-- authorization transition затрагивает любой path вне bounded allowlist;
-- worktree dirty до или после child validator;
+- manifest path/SHA не совпадают;
+- A/tree(A) invalid;
+- manifest отсутствует в A, имеет неправильный Git mode/type или bytes/SHA mismatch;
+- B не является direct child A;
+- activation transition затрагивает любой path вне declared bounded allowlist;
+- manifest изменён между A и B;
+- worktree dirty до, после child validator или непосредственно перед execution steps;
 - manifest/request symlink/non-regular;
 - request hash mismatch;
 - output path symlink/escape;
@@ -137,7 +178,7 @@ Fail closed если:
 - max_runs exhausted;
 - semantic correction требуется для protocol/fixture/Gold/Oracle.
 
-## 8. Non-authorizations
+## 9. Non-authorizations
 
 Даже будущая adoption OD-PILOT-01 не создаёт автоматически:
 
@@ -151,19 +192,21 @@ Fail closed если:
 
 `Human Reference Approved ≠ Pilot ≠ Evidence ≠ Production Authorization`.
 
-## 9. Owner adoption record
+## 10. Owner adoption record
 
-До отдельной explicit owner adoption + canonical authorization transition статус остаётся `DRAFT — NOT ADOPTED` / `Pilot NOT_AUTHORIZED`.
+До отдельной explicit owner adoption + canonical activation transition статус остаётся `DRAFT — NOT ADOPTED` / `Pilot NOT_AUTHORIZED`.
 
 ```text
-I, <GitHub login>, adopt OD-PILOT-01 v0.5.
+I, <GitHub login>, adopt OD-PILOT-01 v0.6.
 
 Authorized bounded Pilot package:
 - authorization_id: <unique ID>;
-- authorization_base_commit: <pre-authorization SHA>;
-- authorization_base_tree: <tree SHA>;
+- package commit A: <SHA>;
+- package tree: <tree(A)>;
+- activation policy: DIRECT_CHILD_ONLY;
+- activation paths: <bounded governance paths>;
 - canonical manifest path: <repository-relative path under experiments/e0/pilot/>;
-- canonical manifest SHA-256: <SHA-256>;
+- canonical manifest SHA-256: <SHA-256 of exact manifest bytes in A>;
 - fixtures/scenarios: <PILOT-only IDs>;
 - request SHA-256: <SHA-256>;
 - approved reference paths/hashes: <paths + SHA-256>;
@@ -173,6 +216,8 @@ Authorized bounded Pilot package:
 - timeout/output cap/max runs/budget: <limits>;
 - execution posture: UNCONTROLLED_LOCAL_ADVISORY;
 - output destination: .velantrim-continuum-pilot-runs.
+
+Activation must be a separately reviewed direct child B of A and may only materialize canonical authorization/governance mirrors.
 
 Pilot remains PILOT — NOT EVIDENCE.
 Evidence Lock remains NOT_CREATED.
