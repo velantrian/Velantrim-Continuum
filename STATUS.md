@@ -19,6 +19,10 @@
 | Historical Gold / Oracle candidates | ⚠️ `AI_PROPOSED_DRAFT` — preserved, non-authoritative |
 | Approved Capture Gold | ✅ `capture-gold.v0.1.json` — `HUMAN_APPROVED` |
 | Approved Transfer Oracle | ✅ `transfer-oracle.v0.1.json` — `HUMAN_APPROVED` |
+| Pilot preparation decision | ✅ `GO — PREPARE BOUNDED PILOT PACKAGE`, PR #34 merged |
+| Pilot preparation candidate | 🟡 `F1-P-A / NO_TOOLS / UNCONTROLLED_LOCAL_ADVISORY`; exact runtime values unresolved |
+| OD-PILOT-01 adoption | ⛔ `NOT_ADOPTED`; separate owner decision required |
+| Package A / activation B | ⛔ Not created |
 | Harness-validation Pilot | ⛔ `NOT_AUTHORIZED`; not run |
 | Pilot package authorization | ⛔ `null`; no exact manifest path/SHA authorized |
 | Evidence readiness | ❌ False |
@@ -43,8 +47,15 @@
         ↓
 ✅ authoritative versioned Gold / Oracle + approval provenance
         ↓
-🛑 separate owner authorization still required
+✅ GO — PREPARE BOUNDED PILOT PACKAGE
+   candidate: F1-P-A / NO_TOOLS
         ↓
+🛑 exact provider/model/adapter/request/credential/budget values unresolved
+🛑 OD-PILOT-01 NOT ADOPTED
+🛑 package A / activation B NOT CREATED
+🛑 PILOT NOT AUTHORIZED
+        ↓
+only after a separate owner decision and exact constructible package/activation binding:
 PILOT — NOT EVIDENCE
         ↓
 pilot fixes
@@ -80,10 +91,24 @@ The reviewed baseline remains:
 
 Later commits through the approval base do not modify those seven review-snapshot paths, so the approved reference remains bound to the exact reviewed Git tree entries and bytes.
 
+## Pilot preparation boundary
+
+PR #34 records the owner's explicit `OD-PILOT-01-PREP` decision to **GO — PREPARE BOUNDED PILOT PACKAGE** and selects the smallest repository-defined Capture-only candidate `F1-P-A` with `NO_TOOLS` under `UNCONTROLLED_LOCAL_ADVISORY`.
+
+That decision authorizes preparation only. The mandatory real provider/model/adapter/request/credential/budget values remain unresolved. `OD-PILOT-01` is not adopted, package commit A and activation commit B do not exist, and no Pilot run is authorized.
+
+```text
+PREPARATION GO != OD-PILOT-01 ADOPTION
+PREPARATION GO != PACKAGE A/B
+PREPARATION GO != PILOT AUTHORIZATION
+PILOT != EVIDENCE
+```
+
 ## Current authority boundary
 
 - GitHub owns observable lifecycle facts such as PR state, merge SHA, Issue state, and branch HEAD.
-- [`project-state.json`](project-state.json) owns selected semantic project state and authorization flags. A future bounded Pilot requires canonical `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT` plus an exact owner-authorized package/activation binding: immutable manifest blob in package commit A, direct-child activation commit B, exact manifest path/SHA and A/tree(A), bounded activation paths, and canonical authority bytes committed as B's regular non-executable `100644` `project-state.json` Git blob. The current package authorization slot is `null`.
+- [`project-state.json`](project-state.json) owns selected semantic project state and authorization flags. Current machine truth records Pilot preparation as allowed while retaining `experiment_0_pilot_status = NOT_AUTHORIZED` and `experiment_0_pilot_authorization = null`.
+- A future bounded Pilot requires canonical `experiment_0_pilot_status = AUTHORIZED_BOUNDED_PILOT` plus an exact owner-authorized package/activation binding: immutable manifest blob in package commit A, direct-child activation commit B, exact manifest path/SHA and A/tree(A), bounded activation paths, and canonical authority bytes committed as B's regular non-executable `100644` `project-state.json` Git blob.
 - [`docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`](docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md) owns Experiment 0 semantics.
 - [`docs/research/E0_CORRESPONDENCE_LAW_V0_3.md`](docs/research/E0_CORRESPONDENCE_LAW_V0_3.md) owns the current Capture association measurement law.
 - `human-reference-approval.v0.2.json` records explicit human-reference approval provenance and exact reviewed bindings.
@@ -91,4 +116,4 @@ Later commits through the approval base do not modify those seven review-snapsho
 
 ## Boundary
 
-`Human reference approved ≠ Pilot authorized · Pilot package slot present ≠ Pilot authorized · Pilot ≠ Evidence · Evidence Lock ≠ Evidence authorization · CI green ≠ scientific validity · research ≠ production runtime.`
+`Human reference approved ≠ Pilot authorized · preparation GO ≠ OD-PILOT-01 adoption · preparation GO ≠ package A/B · Pilot package slot present ≠ Pilot authorized · Pilot ≠ Evidence · Evidence Lock ≠ Evidence authorization · CI green ≠ scientific validity · research ≠ production runtime.`
