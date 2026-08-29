@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from e0_core import require_human_reference, t4_eligibility
 
@@ -27,9 +28,18 @@ def oracle_state(oracle: dict, scenario_id: str) -> dict:
     return value
 
 
+def canonical_json_value(value: Any) -> Any:
+    """Canonicalize JSON object key order recursively while preserving array order and scalar values."""
+    if isinstance(value, dict):
+        return {key: canonical_json_value(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [canonical_json_value(item) for item in value]
+    return value
+
+
 def ordered_state(state: dict) -> dict:
-    """Return a semantically equivalent state with deterministic top-level key order."""
-    return {key: state[key] for key in sorted(state)}
+    """Return a semantically equivalent JSON state with deterministic object key order at every depth."""
+    return canonical_json_value(state)
 
 
 def event_projection(state: dict) -> tuple[list[dict], dict]:
