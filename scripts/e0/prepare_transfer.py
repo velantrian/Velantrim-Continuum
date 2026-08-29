@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from e0_core import require_human_reference, t4_eligibility
 
@@ -27,8 +28,26 @@ def oracle_state(oracle: dict, scenario_id: str) -> dict:
     return value
 
 
+def canonical_json_value(value: Any) -> Any:
+    """Canonicalize JSON object key order recursively while preserving array order and scalar values."""
+    if isinstance(value, dict):
+        return {key: canonical_json_value(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [canonical_json_value(item) for item in value]
+    return value
+
+
+def ordered_state(state: dict) -> dict:
+    """Return a semantically equivalent JSON state with deterministic object key order at every depth."""
+    return canonical_json_value(state)
+
+
 def event_projection(state: dict) -> tuple[list[dict], dict]:
-    events = [{"seq": index + 1, "op": "SET", "field": key, "value": value} for index, (key, value) in enumerate(state.items())]
+    canonical = ordered_state(state)
+    events = [
+        {"seq": index + 1, "op": "SET", "field": key, "value": value}
+        for index, (key, value) in enumerate(canonical.items())
+    ]
     projected: dict = {}
     for event in events:
         projected[event["field"]] = event["value"]
@@ -36,19 +55,21 @@ def event_projection(state: dict) -> tuple[list[dict], dict]:
 
 
 def build_representation(arm: str, state: dict, source: dict, context_limit: int | None, reserved_tokens: int | None, full_context_tokens: int | None) -> dict:
+    canonical = ordered_state(state)
     if arm == "T0":
-        lines = [f"{key}: {json.dumps(value, ensure_ascii=False, sort_keys=True)}" for key, value in state.items()]
+        lines = [f"{key}: {json.dumps(value, ensure_ascii=False, sort_keys=True)}" for key, value in canonical.items()]
         return {"arm": arm, "format": "structured_summary", "summary": "\n".join(lines)}
     if arm == "T1":
-        return {"arm": arm, "format": "canonical_current_state", "state": state}
+        return {"arm": arm, "format": "canonical_current_state", "state": canonical}
     if arm == "T2":
-        events, projection = event_projection(state)
+        events, projection = event_projection(canonical)
         if projection != state:
             raise RuntimeError("deterministic projection failed fidelity check")
         return {"arm": arm, "format": "event_log_plus_projection", "events": events, "projection": projection}
     if arm == "T3":
-        events, projection = event_projection(state)
-        manifest = " | ".join(f"{key}={value}" for key, value in state.items() if key in {"rationale", "unresolved_question", "rejected_alternative", "artifact_reference"})
+        events, projection = event_projection(canonical)
+        manifest_fields = {"rationale", "unresolved_question", "rejected_alternative", "artifact_reference"}
+        manifest = " | ".join(f"{key}={value}" for key, value in canonical.items() if key in manifest_fields)
         return {"arm": arm, "format": "projection_plus_reconstructive_manifest", "projection": projection, "manifest": manifest, "events": events}
     if arm == "T4":
         if None in {context_limit, reserved_tokens, full_context_tokens}:
