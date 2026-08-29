@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,20 +36,25 @@ def _serialized(arm: str, state: dict) -> str:
     return json.dumps(representation, ensure_ascii=False, separators=(",", ":"))
 
 
-def test_t0_to_t3_are_invariant_to_input_key_insertion_order() -> None:
-    keys = ["goal", "rationale", "unresolved_question", "rejected_alternative", "artifact_reference"]
-    left = _state_in_order(keys)
-    right = _state_in_order(list(reversed(keys)))
+class TransferRepresentationOrderTests(unittest.TestCase):
+    def test_t0_to_t3_are_invariant_to_input_key_insertion_order(self) -> None:
+        keys = ["goal", "rationale", "unresolved_question", "rejected_alternative", "artifact_reference"]
+        left = _state_in_order(keys)
+        right = _state_in_order(list(reversed(keys)))
 
-    assert left == right
-    for arm in ("T0", "T1", "T2", "T3"):
-        assert _serialized(arm, left) == _serialized(arm, right)
+        self.assertEqual(left, right)
+        for arm in ("T0", "T1", "T2", "T3"):
+            with self.subTest(arm=arm):
+                self.assertEqual(_serialized(arm, left), _serialized(arm, right))
+
+    def test_t2_event_sequence_uses_canonical_field_order(self) -> None:
+        state = _state_in_order(["rationale", "goal", "artifact_reference", "unresolved_question", "rejected_alternative"])
+        representation = build_representation("T2", state, {"source_context": "unused"}, None, None, None)
+
+        fields = [event["field"] for event in representation["events"]]
+        self.assertEqual(fields, sorted(state))
+        self.assertEqual(representation["projection"], state)
 
 
-def test_t2_event_sequence_uses_canonical_field_order() -> None:
-    state = _state_in_order(["rationale", "goal", "artifact_reference", "unresolved_question", "rejected_alternative"])
-    representation = build_representation("T2", state, {"source_context": "unused"}, None, None, None)
-
-    fields = [event["field"] for event in representation["events"]]
-    assert fields == sorted(state)
-    assert representation["projection"] == state
+if __name__ == "__main__":
+    unittest.main()
