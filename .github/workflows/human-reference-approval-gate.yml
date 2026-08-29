@@ -6,13 +6,22 @@ on:
     paths:
       - "experiments/e0/gold/approved/**"
       - "experiments/e0/oracle/approved/**"
-      - "experiments/e0/approval/human-reference-approval.v0.2.json"
+      - "experiments/e0/approval/**"
+      - "scripts/e0/validate_human_reference_approval.py"
+      - "scripts/e0/review_snapshot.py"
+      - "scripts/e0/e0_core.py"
+      - "scripts/e0/validate_contracts.py"
+      - "experiments/e0/schema/**"
+      - "tests/e0/**"
+      - ".github/workflows/human-reference-approval-gate.yml"
+      - ".github/workflows/e0-harness.yml"
 
-# This gate is deliberately NOT triggered by candidate corrections or by edits to
-# the validator/workflow itself. Candidate corrections must remain possible while
-# Issue #9 is open; validator/workflow code is covered by the normal E0 harness.
-# Once approved artifacts or the approval record are introduced/changed, this gate
-# fail-closes on the exact reviewed commit/tree bytes plus current approved bindings.
+# Human approval is now closed and authoritative. This gate therefore acts as a
+# permanent post-approval invariant: changes to approved references, approval
+# records, validation logic, schemas, tests, or the workflows that enforce those
+# bindings must continue to validate the exact reviewed commit/tree bytes and
+# current approved bindings. Candidate research artifacts remain outside this
+# gate unless and until they are promoted into an approved authority surface.
 permissions:
   contents: read
 
