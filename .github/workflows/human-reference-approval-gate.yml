@@ -3,16 +3,11 @@ name: Human reference approval binding gate
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "experiments/e0/gold/approved/**"
-      - "experiments/e0/oracle/approved/**"
-      - "experiments/e0/approval/human-reference-approval.v0.2.json"
 
-# This gate is deliberately NOT triggered by candidate corrections or by edits to
-# the validator/workflow itself. Candidate corrections must remain possible while
-# Issue #9 is open; validator/workflow code is covered by the normal E0 harness.
-# Once approved artifacts or the approval record are introduced/changed, this gate
-# fail-closes on the exact reviewed commit/tree bytes plus current approved bindings.
+# Human approval is now closed and authoritative. Run this invariant on every
+# pull request so future validator/evaluator dependencies cannot bypass it and
+# so the workflow remains compatible with being made a required check without
+# path-filtered Expected/Pending behavior on unrelated changes.
 permissions:
   contents: read
 
@@ -29,6 +24,7 @@ jobs:
       - name: Check out pull request head with full history
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
