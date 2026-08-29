@@ -227,7 +227,12 @@ def main() -> int:
             max_output_bytes=limits["max_output_bytes"],
         )
         if returncode != 0:
-            raise AdapterError(f"adapter failed ({returncode}): {stderr.strip()}")
+            stderr_text_utf8 = stderr.encode("utf-8", errors="replace")
+            raise AdapterError(
+                f"adapter failed with return code {returncode}; "
+                f"stderr_text_utf8_sha256={hashlib.sha256(stderr_text_utf8).hexdigest()}; "
+                f"stderr_text_utf8_bytes={len(stderr_text_utf8)}"
+            )
         try:
             response = json.loads(stdout)
         except json.JSONDecodeError as exc:
@@ -235,7 +240,7 @@ def main() -> int:
 
         metrics = {
             "latency_ms": {"provenance": "MEASURED", "value": elapsed_ms, "unit": "ms"},
-            "model_calls": {"provenance": "MEASURED", "value": 1, "unit": "calls"},
+            "model_calls": {"provenance": "UNAVAILABLE", "value": None, "unit": "calls"},
             "tool_calls": {"provenance": "UNAVAILABLE", "value": None, "unit": "calls"},
             "input_tokens": {"provenance": "UNAVAILABLE", "value": None, "unit": "tokens"},
             "output_tokens": {"provenance": "UNAVAILABLE", "value": None, "unit": "tokens"},
