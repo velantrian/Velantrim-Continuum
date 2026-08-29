@@ -1,6 +1,8 @@
 # Experiment 0 — Correspondence / Association Law v0.2
 
-**Status:** proposed bounded measurement-law remediation for Experiment 0 Capture evaluation.  
+> **HISTORICAL / SUPERSEDED.** This measurement law is retained for provenance and research history only. It is superseded by `E0_CORRESPONDENCE_LAW_V0_3.md` and must not be treated as the current correspondence law.
+
+**Status:** superseded historical measurement law for Experiment 0 Capture evaluation.  
 **Implementation identifier:** `e0-correspondence-v0.2`  
 **Fixture strategy key:** `deterministic_semantic_fields`
 
