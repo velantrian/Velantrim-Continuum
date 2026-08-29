@@ -47,6 +47,40 @@ class TransferRepresentationOrderTests(unittest.TestCase):
             with self.subTest(arm=arm):
                 self.assertEqual(_serialized(arm, left), _serialized(arm, right))
 
+    def test_t0_to_t3_are_invariant_to_nested_object_key_order(self) -> None:
+        left = {
+            "goal": "continue safely",
+            "committed_operation": {"id": "op-17", "status": "COMMITTED"},
+            "unknown_operation": {"id": "op-18", "status": "UNKNOWN"},
+            "ordered_steps": [
+                {"step": 1, "detail": {"kind": "READ", "target": "state"}},
+                {"step": 2, "detail": {"kind": "WRITE", "target": "summary"}},
+            ],
+        }
+        right = {
+            "ordered_steps": [
+                {"detail": {"target": "state", "kind": "READ"}, "step": 1},
+                {"detail": {"target": "summary", "kind": "WRITE"}, "step": 2},
+            ],
+            "unknown_operation": {"status": "UNKNOWN", "id": "op-18"},
+            "committed_operation": {"status": "COMMITTED", "id": "op-17"},
+            "goal": "continue safely",
+        }
+
+        self.assertEqual(left, right)
+        for arm in ("T0", "T1", "T2", "T3"):
+            with self.subTest(arm=arm):
+                self.assertEqual(_serialized(arm, left), _serialized(arm, right))
+
+    def test_array_order_remains_semantically_significant(self) -> None:
+        left = {"goal": "continue safely", "ordered_steps": ["first", "second"]}
+        right = {"goal": "continue safely", "ordered_steps": ["second", "first"]}
+
+        self.assertNotEqual(left, right)
+        for arm in ("T0", "T1", "T2", "T3"):
+            with self.subTest(arm=arm):
+                self.assertNotEqual(_serialized(arm, left), _serialized(arm, right))
+
     def test_t2_event_sequence_uses_canonical_field_order(self) -> None:
         state = _state_in_order(["rationale", "goal", "artifact_reference", "unresolved_question", "rejected_alternative"])
         representation = build_representation("T2", state, {"source_context": "unused"}, None, None, None)
