@@ -5,11 +5,24 @@ import argparse
 import json
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
 from e0_core import evaluate_capture, require_human_reference
 
+ROOT = Path(__file__).resolve().parents[2]
 
-def load(path: str) -> dict:
+
+def load(path: str | Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def validate_schema(instance: object, schema_relative: str, label: str) -> None:
+    schema = load(ROOT / schema_relative)
+    validator = Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(instance), key=lambda item: list(item.absolute_path))
+    if errors:
+        rendered = "; ".join(f"{list(error.absolute_path)}: {error.message}" for error in errors)
+        raise ValueError(f"{label} schema violation: {rendered}")
 
 
 def find_fixture(fixture_set: dict, fixture_id: str) -> dict:
@@ -51,6 +64,8 @@ def main() -> int:
     fixture = find_fixture(fixture_set, args.fixture_id)
     gold = load(args.gold)
     captured = load(args.captured_state)
+    validate_schema(captured, "experiments/e0/schema/e0-state.schema.json", "captured state")
+
     reference_items = gold_for_fixture(gold, fixture, args.clarification_stage)
     result = evaluate_capture(
         reference_items,
@@ -60,6 +75,8 @@ def main() -> int:
     )
     result["fixture_id"] = args.fixture_id
     result["clarification_stage"] = args.clarification_stage
+    validate_schema(result, "experiments/e0/schema/evaluation.schema.json", "evaluation result")
+
     Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 0
 

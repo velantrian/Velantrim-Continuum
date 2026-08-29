@@ -7,6 +7,8 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
+from e0_core import evaluate_capture
+
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_DIR = ROOT / "experiments/e0/schema"
 SCHEMA_INSTANCE_BINDINGS = {
@@ -14,6 +16,13 @@ SCHEMA_INSTANCE_BINDINGS = {
         "experiments/e0/fixtures/capture/pilot/fixtures.json",
         "experiments/e0/fixtures/capture/evidence/fixtures.json",
     ),
+}
+SCHEMA_COVERAGE = {
+    "capture-fixture.schema.json": "COMMITTED_INSTANCES",
+    "e0-state.schema.json": "DERIVED_FROM_COMMITTED_GOLD",
+    "evaluation.schema.json": "GENERATED_FROM_CURRENT_EVALUATOR",
+    "evidence-lock.schema.json": "NO_COMMITTED_INSTANCE_YET",
+    "run-manifest.schema.json": "NO_COMMITTED_INSTANCE_YET",
 }
 
 
@@ -29,6 +38,44 @@ def render_json_path(parts) -> str:
         else:
             path += f".{part}"
     return path
+
+
+def validate_instance(schema: dict, instance: object, label: str) -> list[str]:
+    validator = Draft202012Validator(schema)
+    return [
+        f"{label} {render_json_path(error.absolute_path)}: schema violation: {error.message}"
+        for error in sorted(validator.iter_errors(instance), key=lambda item: list(item.absolute_path))
+    ]
+
+
+def validate_derived_state_instances(schema: dict) -> list[str]:
+    errors: list[str] = []
+    reference_paths = (
+        "experiments/e0/gold/candidates/capture-gold.ai-proposed.json",
+        "experiments/e0/gold/approved/capture-gold.v0.1.json",
+    )
+    sections = (
+        "items_by_family",
+        "post_clarification_items_by_family",
+        "post_clarification_items_by_fixture",
+    )
+    for relative in reference_paths:
+        reference = load(relative)
+        for section in sections:
+            for key, items in reference.get(section, {}).items():
+                instance = {"schema_version": "0.1", "items": items}
+                errors += validate_instance(schema, instance, f"{relative}::{section}.{key}")
+    return errors
+
+
+def validate_generated_evaluation_instance(schema: dict) -> list[str]:
+    approved_gold = load("experiments/e0/gold/approved/capture-gold.v0.1.json")
+    reference_items = approved_gold["items_by_family"]["F1"]
+    captured_state = {"schema_version": "0.1", "items": reference_items}
+    result = evaluate_capture(reference_items, captured_state, [], None)
+    result["fixture_id"] = "SCHEMA-CONTRACT-F1"
+    result["clarification_stage"] = "pre"
+    return validate_instance(schema, result, "generated evaluator contract")
 
 
 def validate_json_schemas() -> list[str]:
@@ -47,20 +94,37 @@ def validate_json_schemas() -> list[str]:
             continue
         schemas[path.name] = schema
 
+    discovered = set(schemas)
+    classified = set(SCHEMA_COVERAGE)
+    if discovered != classified:
+        missing = sorted(discovered - classified)
+        stale = sorted(classified - discovered)
+        if missing:
+            errors.append(f"schemas missing explicit coverage classification: {missing}")
+        if stale:
+            errors.append(f"coverage classification references missing schemas: {stale}")
+
     for schema_name, instances in SCHEMA_INSTANCE_BINDINGS.items():
         schema = schemas.get(schema_name)
         if schema is None:
             errors.append(f"missing or invalid schema required for instance validation: {schema_name}")
             continue
-        validator = Draft202012Validator(schema)
         for relative in instances:
             try:
                 instance = load(relative)
             except (FileNotFoundError, json.JSONDecodeError) as exc:
                 errors.append(f"{relative}: cannot load schema-bound instance: {exc}")
                 continue
-            for error in sorted(validator.iter_errors(instance), key=lambda item: list(item.absolute_path)):
-                errors.append(f"{relative} {render_json_path(error.absolute_path)}: schema violation: {error.message}")
+            errors += validate_instance(schema, instance, relative)
+
+    state_schema = schemas.get("e0-state.schema.json")
+    if state_schema is not None:
+        errors += validate_derived_state_instances(state_schema)
+
+    evaluation_schema = schemas.get("evaluation.schema.json")
+    if evaluation_schema is not None:
+        errors += validate_generated_evaluation_instance(evaluation_schema)
+
     return errors
 
 
@@ -125,7 +189,7 @@ def main() -> int:
         for error in errors:
             print(f"ERROR: {error}")
         return 1
-    print("Experiment 0 contracts: VALID (Draft 2020-12 schema + research invariants)")
+    print("Experiment 0 contracts: VALID (Draft 2020-12 schema + explicit coverage + research invariants)")
     return 0
 
 
