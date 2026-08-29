@@ -227,11 +227,11 @@ def main() -> int:
             max_output_bytes=limits["max_output_bytes"],
         )
         if returncode != 0:
-            stderr_bytes = stderr.encode("utf-8", errors="replace")
+            stderr_text_utf8 = stderr.encode("utf-8", errors="replace")
             raise AdapterError(
                 f"adapter failed with return code {returncode}; "
-                f"stderr_sha256={hashlib.sha256(stderr_bytes).hexdigest()}; "
-                f"stderr_bytes={len(stderr_bytes)}"
+                f"stderr_text_utf8_sha256={hashlib.sha256(stderr_text_utf8).hexdigest()}; "
+                f"stderr_text_utf8_bytes={len(stderr_text_utf8)}"
             )
         try:
             response = json.loads(stdout)
