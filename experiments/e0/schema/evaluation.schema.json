@@ -1,11 +1,11 @@
 {
   "$schema":"https://json-schema.org/draft/2020-12/schema",
-  "$id":"velantrim-continuum:e0-evaluation:v0.2",
+  "$id":"velantrim-continuum:e0-evaluation:v0.3",
   "type":"object",
   "required":["evaluation_version","measurement_law_version","hard_fail_law_version","match_strategy","fixture_id","clarification_stage","item_results","fabrications","hard_fails"],
   "properties":{
     "evaluation_version":{"const":"0.1"},
-    "measurement_law_version":{"const":"e0-correspondence-v0.2"},
+    "measurement_law_version":{"const":"e0-correspondence-v0.3"},
     "hard_fail_law_version":{"const":"e0-hard-fail-v0.2"},
     "match_strategy":{"const":"deterministic_semantic_fields"},
     "fixture_id":{"type":"string","minLength":1},
