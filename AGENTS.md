@@ -22,7 +22,7 @@ Do not use the human-facing README as the sole source of current project truth.
 
 ## Current objective
 
-The current research sequence is:
+The research sequence is:
 
 1. **E0-C — Capture Isolation**
 2. **E0-T — Transfer Isolation**
@@ -32,7 +32,7 @@ The canonical protocol is:
 
 `docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md`
 
-Documentation Architecture v1 is complete via PR #2. That merge did **not** select the next engineering milestone and did not authorize Experiment 0 execution. The next bounded engineering milestone must still be selected explicitly.
+Current milestone, gate, blocker and authorization state are volatile facts. Read them from `project-state.json`, then verify the derived explanation in `docs/ai/CURRENT_STATE.md`. This structural contract does not independently select or restate the current engineering milestone.
 
 ## Core research rule
 

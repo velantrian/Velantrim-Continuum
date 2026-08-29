@@ -12,7 +12,7 @@ Do **not** reconstruct current project truth from the human-facing README alone.
 2. `AGENTS.md` — repository contract, scope boundaries and experimental discipline.
 3. `project-state.json` — selected semantic project state and authorization flags.
 4. `docs/ai/CURRENT_STATE.md` — derived plain-language explanation of volatile current state.
-5. `docs/ai/AUDIT_AND_FUTURE_WORK.md` — durable audit queue, evidence anchors, revalidation triggers and non-authorization boundaries.
+5. `docs/ai/AUDIT_AND_FUTURE_WORK.md` — historical audit/future-work ledger; do not use historical checkpoint fields as current state.
 6. `docs/research/IDPS_EXPERIMENT_0_PREREGISTRATION.md` — canonical Experiment 0 protocol.
 7. Task-specific fixtures, evaluators, review/approval records, results or evidence when they exist.
 8. `RESEARCH_OVERVIEW.md` and `README.md` for human-oriented conceptual context.
@@ -70,42 +70,25 @@ Never infer any of the following without explicit evidence:
 - human-reference approval means Pilot authorization;
 - Pilot means Evidence or Evidence Lock means Evidence authorization.
 
-## Current canonical sequence
+## Current-state routing
 
-Fresh repository state must still be verified live. The bounded program is now:
+This AI entry point intentionally does **not** duplicate the volatile milestone/gate table.
 
-```text
-Research foundation                     ✅ merged
-Documentation architecture              ✅ merged
-Harness-readiness milestone             ✅ selected / ACTIVE
-Preregistration hardening               ✅ merged
-Schemas / F1–F8 / transfer fixtures     ✅ merged
-Deterministic evaluator / E0 harness     ✅ implemented and CI-validated
-Human-review engineering preparation    ✅ complete
-Human semantic Gold / Oracle approval    ✅ 14 / 14 ACCEPT
-Authoritative Gold / Oracle materialized ✅ versioned v0.1 references + v0.2 approval record
-Human-reference gate                     ✅ CLOSED
-Pilot — NOT EVIDENCE                     ⛔ NOT_AUTHORIZED / not run
-Evidence Lock                            ❌ none
-E0-C evidence                            ❌ not started / not authorized
-Capture analysis                         ❌ not reached
-E0-T evidence                            ❌ not started / not authorized
-Transfer analysis                        ❌ not reached
-Architecture Reassessment               ❌ not reached
-Production architecture                 ❌ not frozen
-Production runtime                       ❌ not authorized
-Ecosystem integration                    ❌ not authorized
-```
+For the current engineering milestone, human-reference status, Pilot authorization, Evidence Lock state, E0-C/E0-T status, production/runtime authorization and ecosystem-integration authorization:
 
-The research dependency sequence remains:
+1. read `project-state.json` as the machine semantic state;
+2. verify `docs/ai/CURRENT_STATE.md` and `STATUS.md` as derived human-readable surfaces;
+3. verify live GitHub lifecycle facts directly when the claim concerns PR state, merge SHA, ancestry or branch HEAD.
+
+The stable research dependency sequence remains:
 
 `E0-C Capture Isolation → Capture analysis → E0-T Transfer Isolation → Transfer analysis → mandatory Architecture Reassessment`
 
-Before E0-C evidence, the harness-readiness workstream still requires a separately owner-authorized Pilot-only validation, allowed Pilot corrections, Evidence Lock, then **STOP**. Human-reference approval satisfies only the human-reference dependency and does not authorize any later dependency.
+A selected preparation milestone is not execution authorization. Human-reference approval satisfies only the human-reference dependency and does not authorize Pilot execution, Evidence Lock, E0-C/E0-T evidence, production runtime, or ecosystem integration.
 
 ## Human-reference rule
 
-Issue #9, `experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md`, and the versioned approval record define the current research-integrity boundary.
+Issue #9, `experiments/e0/review/ISSUE_9_HUMAN_REVIEW_PROTOCOL.md`, and the versioned approval record define the research-integrity boundary.
 
 ```text
 AI_PROPOSED_DRAFT
