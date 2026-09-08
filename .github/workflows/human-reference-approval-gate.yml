@@ -3,16 +3,18 @@ name: Human reference approval binding gate
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 # Human approval is now closed and authoritative. Run this invariant on every
-# pull request so future validator/evaluator dependencies cannot bypass it and
-# so the workflow remains compatible with being made a required check without
-# path-filtered Expected/Pending behavior on unrelated changes.
+# pull request and every push to main so future validator/evaluator dependencies
+# cannot bypass it and so the workflow remains compatible with being made a
+# required check without path-filtered Expected/Pending behavior on unrelated changes.
 permissions:
   contents: read
 
 concurrency:
-  group: human-reference-approval-${{ github.event.pull_request.number }}
+  group: human-reference-approval-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -21,10 +23,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Check out pull request head with full history
+      - name: Check out exact event head with full history
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
