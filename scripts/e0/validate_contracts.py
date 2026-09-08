@@ -166,6 +166,11 @@ def validate_fixture_set(relative: str, expected_partition: str, candidate_gold:
                 for value in str(binding.get("item_ref", "")).split(",")
                 if value.strip()
             }
+            if not binding_refs:
+                errors.append(
+                    f"{fixture.get('fixture_id')}: hard_fail_bindings require at least one non-empty Gold item_ref"
+                )
+                continue
             missing_binding_refs = binding_refs - candidate_ids
             if missing_binding_refs:
                 errors.append(
