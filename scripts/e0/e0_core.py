@@ -272,9 +272,14 @@ def evaluate_capture(
                     break
         elif hard_fail_class == "UNSAFE_EPISTEMIC_PROMOTION":
             refs = [value.strip() for value in item_ref.split(",") if value.strip()]
-            outcomes = [by_gold_id.get(value, {}).get("primary_outcome") for value in refs]
-            triggered = any(value in {"CONFLICT_COLLAPSED", "OVER_PROMOTED"} for value in outcomes)
-            evidence = "bound contested state promoted/collapsed" if triggered else None
+            missing_refs = [value for value in refs if value not in by_gold_id]
+            if missing_refs:
+                triggered = True
+                evidence = f"bound contested state reference missing from Gold: {missing_refs}"
+            else:
+                outcomes = [by_gold_id[value].get("primary_outcome") for value in refs]
+                triggered = any(value in {"CONFLICT_COLLAPSED", "OVER_PROMOTED"} for value in outcomes)
+                evidence = "bound contested state promoted/collapsed" if triggered else None
         hard_fails.append({"class": hard_fail_class, "binding_id": f"binding-{index + 1}", "triggered": triggered, "evidence": evidence})
 
     return {
