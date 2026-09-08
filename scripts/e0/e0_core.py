@@ -272,6 +272,10 @@ def evaluate_capture(
                     break
         elif hard_fail_class == "UNSAFE_EPISTEMIC_PROMOTION":
             refs = [value.strip() for value in item_ref.split(",") if value.strip()]
+            if not refs:
+                raise ValueError(
+                    f"hard_fail_bindings[{index}] UNSAFE_EPISTEMIC_PROMOTION requires at least one non-empty item_ref"
+                )
             missing_refs = [value for value in refs if value not in by_gold_id]
             if missing_refs:
                 triggered = True
