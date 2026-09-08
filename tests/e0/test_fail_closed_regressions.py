@@ -29,8 +29,8 @@ class FailClosedRegressionTests(unittest.TestCase):
                 )
             self.assertLess(time.monotonic() - started, 5.0)
 
-    def test_unknown_unsafe_epistemic_promotion_ref_fails_closed(self):
-        gold = {
+    def _contested_gold(self):
+        return {
             "item_id": "known",
             "entity": "decision",
             "kind": "claim",
@@ -45,6 +45,9 @@ class FailClosedRegressionTests(unittest.TestCase):
             "rationale": None,
             "value": "UNRESOLVED",
         }
+
+    def test_unknown_unsafe_epistemic_promotion_ref_fails_closed(self):
+        gold = self._contested_gold()
         result = evaluate_capture(
             [gold],
             {"schema_version": "0.1", "items": [dict(gold)]},
@@ -61,7 +64,25 @@ class FailClosedRegressionTests(unittest.TestCase):
         self.assertTrue(hard_fail["triggered"])
         self.assertIn("missing from Gold", hard_fail["evidence"])
 
-    def test_contract_validation_rejects_unknown_hard_fail_ref(self):
+    def test_empty_unsafe_epistemic_promotion_ref_is_rejected_at_runtime(self):
+        gold = self._contested_gold()
+        for item_ref in ("", "   ", ",", " , , "):
+            with self.subTest(item_ref=item_ref):
+                with self.assertRaisesRegex(ValueError, "requires at least one non-empty item_ref"):
+                    evaluate_capture(
+                        [gold],
+                        {"schema_version": "0.1", "items": [dict(gold)]},
+                        [
+                            {
+                                "item_ref": item_ref,
+                                "hard_fail_class": "UNSAFE_EPISTEMIC_PROMOTION",
+                                "predicate": "bound contested state must not be promoted",
+                            }
+                        ],
+                        None,
+                    )
+
+    def _fixture_document(self, hard_fail_binding):
         fixtures = []
         candidate_gold = {"items_by_family": {}}
         for index in range(1, 9):
@@ -76,17 +97,38 @@ class FailClosedRegressionTests(unittest.TestCase):
                 "hard_fail_bindings": [],
             }
             fixtures.append(fixture)
-        fixtures[-1]["hard_fail_bindings"] = [
+        fixtures[-1]["hard_fail_bindings"] = [hard_fail_binding]
+        return {"partition": "PILOT", "fixtures": fixtures}, candidate_gold
+
+    def test_contract_validation_rejects_unknown_hard_fail_ref(self):
+        document, candidate_gold = self._fixture_document(
             {
                 "item_ref": "TYPO-DOES-NOT-EXIST",
                 "hard_fail_class": "UNSAFE_EPISTEMIC_PROMOTION",
                 "predicate": "bound contested state must not be promoted",
             }
-        ]
-        document = {"partition": "PILOT", "fixtures": fixtures}
+        )
         with patch.object(validate_contracts, "load", return_value=document):
             errors = validate_contracts.validate_fixture_set("synthetic.json", "PILOT", candidate_gold)
         self.assertTrue(any("hard_fail_bindings candidate Gold missing refs" in error for error in errors))
+
+    def test_contract_validation_rejects_empty_gold_backed_hard_fail_refs(self):
+        for hard_fail_class in ("LOST_CRITICAL_RESTRICTION", "UNSAFE_EPISTEMIC_PROMOTION"):
+            for item_ref in ("", "   ", ",", " , , "):
+                with self.subTest(hard_fail_class=hard_fail_class, item_ref=item_ref):
+                    document, candidate_gold = self._fixture_document(
+                        {
+                            "item_ref": item_ref,
+                            "hard_fail_class": hard_fail_class,
+                            "predicate": "synthetic fail-closed binding",
+                        }
+                    )
+                    with patch.object(validate_contracts, "load", return_value=document):
+                        errors = validate_contracts.validate_fixture_set("synthetic.json", "PILOT", candidate_gold)
+                    self.assertTrue(
+                        any("require at least one non-empty Gold item_ref" in error for error in errors),
+                        errors,
+                    )
 
 
 if __name__ == "__main__":
