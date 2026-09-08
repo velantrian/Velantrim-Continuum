@@ -105,9 +105,14 @@ def bounded_run(
             try:
                 assert proc.stdin is not None
                 proc.stdin.write(request_text)
-                proc.stdin.close()
             except (BrokenPipeError, OSError, ValueError) as exc:
                 writer_error.append(exc)
+            finally:
+                if proc.stdin is not None:
+                    try:
+                        proc.stdin.close()
+                    except (BrokenPipeError, OSError, ValueError):
+                        pass
 
         deadline = time.monotonic() + timeout_seconds
         writer = threading.Thread(target=write_request, name="e0-adapter-stdin", daemon=True)
