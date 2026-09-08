@@ -161,17 +161,22 @@ def validate_fixture_set(relative: str, expected_partition: str, candidate_gold:
             hard_fail_class = binding.get("hard_fail_class")
             if hard_fail_class not in {"LOST_CRITICAL_RESTRICTION", "UNSAFE_EPISTEMIC_PROMOTION"}:
                 continue
-            binding_refs = {
+            binding_refs = [
                 value.strip()
                 for value in str(binding.get("item_ref", "")).split(",")
                 if value.strip()
-            }
+            ]
             if not binding_refs:
                 errors.append(
                     f"{fixture.get('fixture_id')}: hard_fail_bindings require at least one non-empty Gold item_ref"
                 )
                 continue
-            missing_binding_refs = binding_refs - candidate_ids
+            if hard_fail_class == "LOST_CRITICAL_RESTRICTION" and len(binding_refs) != 1:
+                errors.append(
+                    f"{fixture.get('fixture_id')}: LOST_CRITICAL_RESTRICTION requires exactly one Gold item_ref"
+                )
+                continue
+            missing_binding_refs = set(binding_refs) - candidate_ids
             if missing_binding_refs:
                 errors.append(
                     f"{fixture.get('fixture_id')}: hard_fail_bindings candidate Gold missing refs {sorted(missing_binding_refs)}"
