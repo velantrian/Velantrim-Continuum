@@ -82,6 +82,38 @@ class FailClosedRegressionTests(unittest.TestCase):
                         None,
                     )
 
+    def test_lost_restriction_normalizes_single_ref_without_false_fail(self):
+        gold = self._contested_gold()
+        result = evaluate_capture(
+            [gold],
+            {"schema_version": "0.1", "items": [dict(gold)]},
+            [
+                {
+                    "item_ref": " known ",
+                    "hard_fail_class": "LOST_CRITICAL_RESTRICTION",
+                    "predicate": "bound restriction must be retained",
+                }
+            ],
+            None,
+        )
+        self.assertFalse(result["hard_fails"][0]["triggered"])
+
+    def test_lost_restriction_rejects_multiple_refs_at_runtime(self):
+        gold = self._contested_gold()
+        with self.assertRaisesRegex(ValueError, "requires exactly one non-empty item_ref"):
+            evaluate_capture(
+                [gold],
+                {"schema_version": "0.1", "items": [dict(gold)]},
+                [
+                    {
+                        "item_ref": "known,other",
+                        "hard_fail_class": "LOST_CRITICAL_RESTRICTION",
+                        "predicate": "bound restriction must be retained",
+                    }
+                ],
+                None,
+            )
+
     def _fixture_document(self, hard_fail_binding):
         fixtures = []
         candidate_gold = {"items_by_family": {}}
@@ -129,6 +161,19 @@ class FailClosedRegressionTests(unittest.TestCase):
                         any("require at least one non-empty Gold item_ref" in error for error in errors),
                         errors,
                     )
+
+    def test_contract_validation_requires_lost_ref_to_be_singular(self):
+        document, candidate_gold = self._fixture_document(
+            {
+                "item_ref": "f8_item,f8_other",
+                "hard_fail_class": "LOST_CRITICAL_RESTRICTION",
+                "predicate": "bound restriction must be retained",
+            }
+        )
+        candidate_gold["items_by_family"]["F8"].append({"item_id": "f8_other"})
+        with patch.object(validate_contracts, "load", return_value=document):
+            errors = validate_contracts.validate_fixture_set("synthetic.json", "PILOT", candidate_gold)
+        self.assertTrue(any("requires exactly one Gold item_ref" in error for error in errors), errors)
 
 
 if __name__ == "__main__":
