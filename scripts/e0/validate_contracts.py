@@ -155,6 +155,22 @@ def validate_fixture_set(relative: str, expected_partition: str, candidate_gold:
         missing_refs = set(fixture.get("expected_item_refs", [])) - candidate_ids
         if missing_refs:
             errors.append(f"{fixture.get('fixture_id')}: candidate Gold missing refs {sorted(missing_refs)}")
+        for binding in fixture.get("hard_fail_bindings", []):
+            if not isinstance(binding, dict):
+                continue
+            hard_fail_class = binding.get("hard_fail_class")
+            if hard_fail_class not in {"LOST_CRITICAL_RESTRICTION", "UNSAFE_EPISTEMIC_PROMOTION"}:
+                continue
+            binding_refs = {
+                value.strip()
+                for value in str(binding.get("item_ref", "")).split(",")
+                if value.strip()
+            }
+            missing_binding_refs = binding_refs - candidate_ids
+            if missing_binding_refs:
+                errors.append(
+                    f"{fixture.get('fixture_id')}: hard_fail_bindings candidate Gold missing refs {sorted(missing_binding_refs)}"
+                )
     return errors
 
 
