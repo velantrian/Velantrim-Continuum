@@ -11,6 +11,7 @@ import os
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -98,11 +99,25 @@ def bounded_run(
             text=True,
             **popen_kwargs,
         )
+        writer_error: list[BaseException] = []
+
+        def write_request() -> None:
+            try:
+                assert proc.stdin is not None
+                proc.stdin.write(request_text)
+            except (BrokenPipeError, OSError, ValueError) as exc:
+                writer_error.append(exc)
+            finally:
+                if proc.stdin is not None:
+                    try:
+                        proc.stdin.close()
+                    except (BrokenPipeError, OSError, ValueError):
+                        pass
+
+        deadline = time.monotonic() + timeout_seconds
+        writer = threading.Thread(target=write_request, name="e0-adapter-stdin", daemon=True)
+        writer.start()
         try:
-            assert proc.stdin is not None
-            proc.stdin.write(request_text)
-            proc.stdin.close()
-            deadline = time.monotonic() + timeout_seconds
             while proc.poll() is None:
                 if time.monotonic() >= deadline:
                     raise AdapterError(f"adapter timeout after {timeout_seconds}s")
@@ -113,7 +128,10 @@ def bounded_run(
             # Always clean the process group/session, even if the immediate adapter exited,
             # so a background descendant cannot outlive a declared bounded attempt.
             terminate_process_tree(proc)
+            writer.join(timeout=0.5)
 
+        if writer_error and proc.returncode == 0:
+            raise AdapterError(f"adapter stdin write failed: {writer_error[0]}")
         if stdout_file.tell() > max_output_bytes or stderr_file.tell() > max_output_bytes:
             raise AdapterError(f"adapter output exceeded {max_output_bytes} bytes")
         stdout_file.seek(0)
