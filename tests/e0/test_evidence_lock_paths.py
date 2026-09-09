@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,6 +19,50 @@ def approved_lock(path: str, sha256: str) -> dict:
         "human_gold_approval": {"status": "HUMAN_APPROVED"},
         "artifacts": [{"path": path, "sha256": sha256}],
     }
+
+
+def schema_shaped_lock(artifacts: list[dict]) -> dict:
+    versioned_hash = {"version": "0.1", "sha256": "0" * 64}
+    return {
+        "lock_version": "0.1",
+        "status": "EVIDENCE_READY",
+        "protocol": dict(versioned_hash),
+        "schemas": [dict(versioned_hash)],
+        "evidence_fixtures": dict(versioned_hash),
+        "gold_oracle": dict(versioned_hash),
+        "evaluator": dict(versioned_hash),
+        "run_config": dict(versioned_hash),
+        "prompts": [],
+        "randomization": dict(versioned_hash),
+        "clarification_policy": dict(versioned_hash),
+        "generator_config": dict(versioned_hash),
+        "supersession_rule": dict(versioned_hash),
+        "human_gold_approval": {
+            "status": "HUMAN_APPROVED",
+            "approved_by": "test-owner",
+            "approved_at": "2026-09-09T00:00:00Z",
+        },
+        "artifacts": artifacts,
+    }
+
+
+def run_lock_checker(lock: dict) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory() as temp:
+        lock_path = Path(temp) / "lock.json"
+        lock_path.write_text(json.dumps(lock), encoding="utf-8")
+        return subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "e0" / "check_evidence_lock.py"),
+                "--repo-root",
+                str(ROOT),
+                "--lock",
+                str(lock_path),
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
 
 
 class EvidenceLockPathTests(unittest.TestCase):
@@ -86,6 +132,31 @@ class EvidenceLockPathTests(unittest.TestCase):
             }
             errors = verify_lock(lock, root)
             self.assertIn("duplicate locked artifact path: a.txt", errors)
+
+    def test_cli_rejects_missing_required_evidence_lock_fields(self) -> None:
+        proc = run_lock_checker(
+            {
+                "status": "EVIDENCE_READY",
+                "human_gold_approval": {"status": "HUMAN_APPROVED"},
+            }
+        )
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("schema violation", proc.stdout)
+        self.assertIn("'artifacts' is a required property", proc.stdout)
+        self.assertNotIn("EVIDENCE LOCK: VALID", proc.stdout)
+
+    def test_cli_rejects_empty_artifacts(self) -> None:
+        proc = run_lock_checker(schema_shaped_lock([]))
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("$.artifacts: schema violation", proc.stdout)
+        self.assertNotIn("EVIDENCE LOCK: VALID", proc.stdout)
+
+    def test_cli_accepts_schema_valid_lock_with_matching_artifact(self) -> None:
+        relative = "experiments/e0/schema/evidence-lock.schema.json"
+        digest = sha256_file(ROOT / relative)
+        proc = run_lock_checker(schema_shaped_lock([{"path": relative, "sha256": digest}]))
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("EVIDENCE LOCK: VALID", proc.stdout)
 
 
 if __name__ == "__main__":
