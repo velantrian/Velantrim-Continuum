@@ -2,13 +2,15 @@ name: One-shot Evidence Lock fail-closed repair
 
 on:
   push:
-    branches: [fix/e0-evidence-lock-schema-fail-closed-20260909]
+    branches:
+      - fix/e0-evidence-lock-schema-fail-closed-20260909
 
 permissions:
   contents: write
 
 jobs:
   patch-test-commit:
+    if: github.event.head_commit.message == 'chore: repair one-shot Evidence Lock workflow'
     runs-on: ubuntu-24.04
     steps:
       - name: Check out exact branch head
@@ -23,176 +25,26 @@ jobs:
           python-version: "3.11"
           check-latest: false
 
-      - name: Apply bounded Evidence Lock repair
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          core_path = Path("scripts/e0/e0_core.py")
-          core = core_path.read_text(encoding="utf-8")
-          old = '''def verify_lock(lock: dict[str, Any], repo_root: str | Path) -> list[str]:
-              errors: list[str] = []
-              if lock.get("status") != "EVIDENCE_READY":
-                  errors.append("lock status is not EVIDENCE_READY")
-              approval = lock.get("human_gold_approval", {})
-              if approval.get("status") != "HUMAN_APPROVED":
-                  errors.append("human Gold/Oracle approval missing")
-              root = Path(repo_root).resolve()
-              seen: set[str] = set()
-              for entry in lock.get("artifacts", []):
-          '''
-          new = '''def verify_lock(lock: dict[str, Any], repo_root: str | Path) -> list[str]:
-              errors: list[str] = []
-              if lock.get("status") != "EVIDENCE_READY":
-                  errors.append("lock status is not EVIDENCE_READY")
-              approval = lock.get("human_gold_approval")
-              if not isinstance(approval, dict) or approval.get("status") != "HUMAN_APPROVED":
-                  errors.append("human Gold/Oracle approval missing")
-              artifacts = lock.get("artifacts")
-              if not isinstance(artifacts, list) or not artifacts:
-                  errors.append("locked artifacts must be a non-empty list")
-                  return errors
-              root = Path(repo_root).resolve()
-              seen: set[str] = set()
-              for entry in artifacts:
-          '''
-          if old not in core:
-              raise SystemExit("expected verify_lock source block not found")
-          core_path.write_text(core.replace(old, new, 1), encoding="utf-8")
-
-          checker_path = Path("scripts/e0/check_evidence_lock.py")
-          checker = checker_path.read_text(encoding="utf-8")
-          checker = checker.replace(
-              'from pathlib import Path\n\nfrom e0_core import verify_lock\n',
-              'from pathlib import Path\n\nfrom jsonschema import Draft202012Validator\n\nfrom e0_core import verify_lock\n',
-              1,
-          )
-          marker = '''from e0_core import verify_lock
-
-
-def main() -> int:
-          '''
-          replacement = '''from e0_core import verify_lock
-
-
-EVIDENCE_LOCK_SCHEMA = Path("experiments/e0/schema/evidence-lock.schema.json")
-
-
-def _render_json_path(parts) -> str:
-              path = "$"
-              for part in parts:
-                  path += f"[{part}]" if isinstance(part, int) else f".{part}"
-              return path
-
-
-def validate_lock_schema(lock: object, repo_root: str | Path) -> list[str]:
-              schema = json.loads((Path(repo_root).resolve() / EVIDENCE_LOCK_SCHEMA).read_text(encoding="utf-8"))
-              validator = Draft202012Validator(schema)
-              return [
-                  f"{_render_json_path(error.absolute_path)}: schema violation: {error.message}"
-                  for error in sorted(validator.iter_errors(lock), key=lambda item: list(item.absolute_path))
-              ]
-
-
-def main() -> int:
-          '''
-          if marker not in checker:
-              raise SystemExit("expected checker insertion marker not found")
-          checker = checker.replace(marker, replacement, 1)
-          old_main = '''    lock = json.loads(Path(args.lock).read_text(encoding="utf-8"))
-              errors = verify_lock(lock, args.repo_root)
-              if errors:
-          '''
-          new_main = '''    lock = json.loads(Path(args.lock).read_text(encoding="utf-8"))
-              schema_errors = validate_lock_schema(lock, args.repo_root)
-              if schema_errors:
-                  for error in schema_errors:
-                      print(f"ERROR: {error}")
-                  return 1
-              errors = verify_lock(lock, args.repo_root)
-              if errors:
-          '''
-          if old_main not in checker:
-              raise SystemExit("expected checker main block not found")
-          checker_path.write_text(checker.replace(old_main, new_main, 1), encoding="utf-8")
-
-          tests_path = Path("tests/e0/test_evidence_lock_paths.py")
-          tests = tests_path.read_text(encoding="utf-8")
-          tests = tests.replace(
-              'import tempfile\nimport unittest\n',
-              'import json\nimport subprocess\nimport tempfile\nimport unittest\n',
-              1,
-          )
-          marker = '''    def test_duplicate_locked_artifact_path_is_rejected(self) -> None:
-          '''
-          additions = '''    def test_missing_or_empty_artifacts_are_rejected(self) -> None:
-              with tempfile.TemporaryDirectory() as temp:
-                  root = Path(temp)
-                  for artifacts in (None, []):
-                      with self.subTest(artifacts=artifacts):
-                          lock = {
-                              "status": "EVIDENCE_READY",
-                              "human_gold_approval": {"status": "HUMAN_APPROVED"},
-                          }
-                          if artifacts is not None:
-                              lock["artifacts"] = artifacts
-                          errors = verify_lock(lock, root)
-                          self.assertIn("locked artifacts must be a non-empty list", errors)
-
-              def test_cli_rejects_schema_invalid_evidence_lock(self) -> None:
-                  with tempfile.TemporaryDirectory() as temp:
-                      lock_path = Path(temp) / "lock.json"
-                      lock_path.write_text(
-                          json.dumps({"status": "EVIDENCE_READY", "human_gold_approval": {"status": "HUMAN_APPROVED"}}),
-                          encoding="utf-8",
-                      )
-                      proc = subprocess.run(
-                          [
-                              sys.executable,
-                              str(ROOT / "scripts" / "e0" / "check_evidence_lock.py"),
-                              "--repo-root",
-                              str(ROOT),
-                              "--lock",
-                              str(lock_path),
-                          ],
-                          text=True,
-                          capture_output=True,
-                          check=False,
-                      )
-                      self.assertEqual(proc.returncode, 1)
-                      self.assertIn("schema violation", proc.stdout)
-                      self.assertIn("'artifacts' is a required property", proc.stdout)
-
-          '''
-          # Correct accidental indentation in the inserted method block before writing.
-          additions = additions.replace("\n              def test_cli_", "\n\n    def test_cli_")
-          if marker not in tests:
-              raise SystemExit("expected test insertion marker not found")
-          tests_path.write_text(tests.replace(marker, additions + marker, 1), encoding="utf-8")
-          PY
+      - name: Apply bounded patch
+        env:
+          PATCH_B64: ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpjb3JlX3BhdGggPSBQYXRoKCJzY3JpcHRzL2UwL2UwX2NvcmUucHkiKQpjb3JlID0gY29yZV9wYXRoLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQpvbGQgPSAnJydkZWYgdmVyaWZ5X2xvY2sobG9jazogZGljdFtzdHIsIEFueV0sIHJlcG9fcm9vdDogc3RyIHwgUGF0aCkgLT4gbGlzdFtzdHJdOgogICAgZXJyb3JzOiBsaXN0W3N0cl0gPSBbXQogICAgaWYgbG9jay5nZXQoInN0YXR1cyIpICE9ICJFVklERU5DRV9SRUFEWSI6CiAgICAgICAgZXJyb3JzLmFwcGVuZCgibG9jayBzdGF0dXMgaXMgbm90IEVWSURFTkNFX1JFQURZIikKICAgIGFwcHJvdmFsID0gbG9jay5nZXQoImh1bWFuX2dvbGRfYXBwcm92YWwiLCB7fSkKICAgIGlmIGFwcHJvdmFsLmdldCgic3RhdHVzIikgIT0gIkhVTUFOX0FQUFJPVkVEIjoKICAgICAgICBlcnJvcnMuYXBwZW5kKCJodW1hbiBHb2xkL09yYWNsZSBhcHByb3ZhbCBtaXNzaW5nIikKICAgIHJvb3QgPSBQYXRoKHJlcG9fcm9vdCkucmVzb2x2ZSgpCiAgICBzZWVuOiBzZXRbc3RyXSA9IHNldCgpCiAgICBmb3IgZW50cnkgaW4gbG9jay5nZXQoImFydGlmYWN0cyIsIFtdKToKJycnCm5ldyA9ICcnJ2RlZiB2ZXJpZnlfbG9jayhsb2NrOiBkaWN0W3N0ciwgQW55XSwgcmVwb19yb290OiBzdHIgfCBQYXRoKSAtPiBsaXN0W3N0cl06CiAgICBlcnJvcnM6IGxpc3Rbc3RyXSA9IFtdCiAgICBpZiBsb2NrLmdldCgic3RhdHVzIikgIT0gIkVWSURFTkNFX1JFQURZIjoKICAgICAgICBlcnJvcnMuYXBwZW5kKCJsb2NrIHN0YXR1cyBpcyBub3QgRVZJREVOQ0VfUkVBRFkiKQogICAgYXBwcm92YWwgPSBsb2NrLmdldCgiaHVtYW5fZ29sZF9hcHByb3ZhbCIpCiAgICBpZiBub3QgaXNpbnN0YW5jZShhcHByb3ZhbCwgZGljdCkgb3IgYXBwcm92YWwuZ2V0KCJzdGF0dXMiKSAhPSAiSFVNQU5fQVBQUk9WRUQiOgogICAgICAgIGVycm9ycy5hcHBlbmQoImh1bWFuIEdvbGQvT3JhY2xlIGFwcHJvdmFsIG1pc3NpbmciKQogICAgYXJ0aWZhY3RzID0gbG9jay5nZXQoImFydGlmYWN0cyIpCiAgICBpZiBub3QgaXNpbnN0YW5jZShhcnRpZmFjdHMsIGxpc3QpIG9yIG5vdCBhcnRpZmFjdHM6CiAgICAgICAgZXJyb3JzLmFwcGVuZCgibG9ja2VkIGFydGlmYWN0cyBtdXN0IGJlIGEgbm9uLWVtcHR5IGxpc3QiKQogICAgICAgIHJldHVybiBlcnJvcnMKICAgIHJvb3QgPSBQYXRoKHJlcG9fcm9vdCkucmVzb2x2ZSgpCiAgICBzZWVuOiBzZXRbc3RyXSA9IHNldCgpCiAgICBmb3IgZW50cnkgaW4gYXJ0aWZhY3RzOgonJycKaWYgb2xkIG5vdCBpbiBjb3JlOgogICAgcmFpc2UgU3lzdGVtRXhpdCgiZXhwZWN0ZWQgdmVyaWZ5X2xvY2sgc291cmNlIGJsb2NrIG5vdCBmb3VuZCIpCmNvcmVfcGF0aC53cml0ZV90ZXh0KGNvcmUucmVwbGFjZShvbGQsIG5ldywgMSksIGVuY29kaW5nPSJ1dGYtOCIpCgpjaGVja2VyX3BhdGggPSBQYXRoKCJzY3JpcHRzL2UwL2NoZWNrX2V2aWRlbmNlX2xvY2sucHkiKQpjaGVja2VyID0gY2hlY2tlcl9wYXRoLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQpvbGRfaW1wb3J0ID0gJ2Zyb20gcGF0aGxpYiBpbXBvcnQgUGF0aFxuXG5mcm9tIGUwX2NvcmUgaW1wb3J0IHZlcmlmeV9sb2NrXG4nCm5ld19pbXBvcnQgPSAnZnJvbSBwYXRobGliIGltcG9ydCBQYXRoXG5cbmZyb20ganNvbnNjaGVtYSBpbXBvcnQgRHJhZnQyMDIwMTJWYWxpZGF0b3JcblxuZnJvbSBlMF9jb3JlIGltcG9ydCB2ZXJpZnlfbG9ja1xuJwppZiBvbGRfaW1wb3J0IG5vdCBpbiBjaGVja2VyOgogICAgcmFpc2UgU3lzdGVtRXhpdCgiZXhwZWN0ZWQgY2hlY2tlciBpbXBvcnQgYmxvY2sgbm90IGZvdW5kIikKY2hlY2tlciA9IGNoZWNrZXIucmVwbGFjZShvbGRfaW1wb3J0LCBuZXdfaW1wb3J0LCAxKQoKbWFya2VyID0gJycnZnJvbSBlMF9jb3JlIGltcG9ydCB2ZXJpZnlfbG9jawoKCmRlZiBtYWluKCkgLT4gaW50OgonJycKcmVwbGFjZW1lbnQgPSAnJydmcm9tIGUwX2NvcmUgaW1wb3J0IHZlcmlmeV9sb2NrCgoKRVZJREVOQ0VfTE9DS19TQ0hFTUEgPSBQYXRoKCJleHBlcmltZW50cy9lMC9zY2hlbWEvZXZpZGVuY2UtbG9jay5zY2hlbWEuanNvbiIpCgoKZGVmIF9yZW5kZXJfanNvbl9wYXRoKHBhcnRzKSAtPiBzdHI6CiAgICBwYXRoID0gIiQiCiAgICBmb3IgcGFydCBpbiBwYXJ0czoKICAgICAgICBwYXRoICs9IGYiW3twYXJ0fV0iIGlmIGlzaW5zdGFuY2UocGFydCwgaW50KSBlbHNlIGYiLntwYXJ0fSIKICAgIHJldHVybiBwYXRoCgoKZGVmIHZhbGlkYXRlX2xvY2tfc2NoZW1hKGxvY2s6IG9iamVjdCwgcmVwb19yb290OiBzdHIgfCBQYXRoKSAtPiBsaXN0W3N0cl06CiAgICBzY2hlbWEgPSBqc29uLmxvYWRzKChQYXRoKHJlcG9fcm9vdCkucmVzb2x2ZSgpIC8gRVZJREVOQ0VfTE9DS19TQ0hFTUEpLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKSkKICAgIHZhbGlkYXRvciA9IERyYWZ0MjAyMDEyVmFsaWRhdG9yKHNjaGVtYSkKICAgIHJldHVybiBbCiAgICAgICAgZiJ7X3JlbmRlcl9qc29uX3BhdGgoZXJyb3IuYWJzb2x1dGVfcGF0aCl9OiBzY2hlbWEgdmlvbGF0aW9uOiB7ZXJyb3IubWVzc2FnZX0iCiAgICAgICAgZm9yIGVycm9yIGluIHNvcnRlZCh2YWxpZGF0b3IuaXRlcl9lcnJvcnMobG9jayksIGtleT1sYW1iZGEgaXRlbTogbGlzdChpdGVtLmFic29sdXRlX3BhdGgpKQogICAgXQoKCmRlZiBtYWluKCkgLT4gaW50OgonJycKaWYgbWFya2VyIG5vdCBpbiBjaGVja2VyOgogICAgcmFpc2UgU3lzdGVtRXhpdCgiZXhwZWN0ZWQgY2hlY2tlciBpbnNlcnRpb24gbWFya2VyIG5vdCBmb3VuZCIpCmNoZWNrZXIgPSBjaGVja2VyLnJlcGxhY2UobWFya2VyLCByZXBsYWNlbWVudCwgMSkKCm9sZF9tYWluID0gJycnICAgIGxvY2sgPSBqc29uLmxvYWRzKFBhdGgoYXJncy5sb2NrKS5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikpCiAgICBlcnJvcnMgPSB2ZXJpZnlfbG9jayhsb2NrLCBhcmdzLnJlcG9fcm9vdCkKICAgIGlmIGVycm9yczoKJycnCm5ld19tYWluID0gJycnICAgIGxvY2sgPSBqc29uLmxvYWRzKFBhdGgoYXJncy5sb2NrKS5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikpCiAgICBzY2hlbWFfZXJyb3JzID0gdmFsaWRhdGVfbG9ja19zY2hlbWEobG9jaywgYXJncy5yZXBvX3Jvb3QpCiAgICBpZiBzY2hlbWFfZXJyb3JzOgogICAgICAgIGZvciBlcnJvciBpbiBzY2hlbWFfZXJyb3JzOgogICAgICAgICAgICBwcmludChmIkVSUk9SOiB7ZXJyb3J9IikKICAgICAgICByZXR1cm4gMQogICAgZXJyb3JzID0gdmVyaWZ5X2xvY2sobG9jaywgYXJncy5yZXBvX3Jvb3QpCiAgICBpZiBlcnJvcnM6CicnJwppZiBvbGRfbWFpbiBub3QgaW4gY2hlY2tlcjoKICAgIHJhaXNlIFN5c3RlbUV4aXQoImV4cGVjdGVkIGNoZWNrZXIgbWFpbiBibG9jayBub3QgZm91bmQiKQpjaGVja2VyX3BhdGgud3JpdGVfdGV4dChjaGVja2VyLnJlcGxhY2Uob2xkX21haW4sIG5ld19tYWluLCAxKSwgZW5jb2Rpbmc9InV0Zi04IikKCnRlc3RzX3BhdGggPSBQYXRoKCJ0ZXN0cy9lMC90ZXN0X2V2aWRlbmNlX2xvY2tfcGF0aHMucHkiKQp0ZXN0cyA9IHRlc3RzX3BhdGgucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpCm9sZF9pbXBvcnRzID0gJ2ltcG9ydCB0ZW1wZmlsZVxuaW1wb3J0IHVuaXR0ZXN0XG4nCm5ld19pbXBvcnRzID0gJ2ltcG9ydCBqc29uXG5pbXBvcnQgc3VicHJvY2Vzc1xuaW1wb3J0IHRlbXBmaWxlXG5pbXBvcnQgdW5pdHRlc3RcbicKaWYgb2xkX2ltcG9ydHMgbm90IGluIHRlc3RzOgogICAgcmFpc2UgU3lzdGVtRXhpdCgiZXhwZWN0ZWQgdGVzdCBpbXBvcnQgYmxvY2sgbm90IGZvdW5kIikKdGVzdHMgPSB0ZXN0cy5yZXBsYWNlKG9sZF9pbXBvcnRzLCBuZXdfaW1wb3J0cywgMSkKCm1hcmtlciA9ICcnJyAgICBkZWYgdGVzdF9kdXBsaWNhdGVfbG9ja2VkX2FydGlmYWN0X3BhdGhfaXNfcmVqZWN0ZWQoc2VsZikgLT4gTm9uZToKJycnCmFkZGl0aW9ucyA9ICcnJyAgICBkZWYgdGVzdF9taXNzaW5nX29yX2VtcHR5X2FydGlmYWN0c19hcmVfcmVqZWN0ZWQoc2VsZikgLT4gTm9uZToKICAgICAgICB3aXRoIHRlbXBmaWxlLlRlbXBvcmFyeURpcmVjdG9yeSgpIGFzIHRlbXA6CiAgICAgICAgICAgIHJvb3QgPSBQYXRoKHRlbXApCiAgICAgICAgICAgIGZvciBhcnRpZmFjdHMgaW4gKE5vbmUsIFtdKToKICAgICAgICAgICAgICAgIHdpdGggc2VsZi5zdWJUZXN0KGFydGlmYWN0cz1hcnRpZmFjdHMpOgogICAgICAgICAgICAgICAgICAgIGxvY2sgPSB7CiAgICAgICAgICAgICAgICAgICAgICAgICJzdGF0dXMiOiAiRVZJREVOQ0VfUkVBRFkiLAogICAgICAgICAgICAgICAgICAgICAgICAiaHVtYW5fZ29sZF9hcHByb3ZhbCI6IHsic3RhdHVzIjogIkhVTUFOX0FQUFJPVkVEIn0sCiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgIGlmIGFydGlmYWN0cyBpcyBub3QgTm9uZToKICAgICAgICAgICAgICAgICAgICAgICAgbG9ja1siYXJ0aWZhY3RzIl0gPSBhcnRpZmFjdHMKICAgICAgICAgICAgICAgICAgICBlcnJvcnMgPSB2ZXJpZnlfbG9jayhsb2NrLCByb290KQogICAgICAgICAgICAgICAgICAgIHNlbGYuYXNzZXJ0SW4oImxvY2tlZCBhcnRpZmFjdHMgbXVzdCBiZSBhIG5vbi1lbXB0eSBsaXN0IiwgZXJyb3JzKQoKICAgIGRlZiB0ZXN0X2NsaV9yZWplY3RzX3NjaGVtYV9pbnZhbGlkX2V2aWRlbmNlX2xvY2soc2VsZikgLT4gTm9uZToKICAgICAgICB3aXRoIHRlbXBmaWxlLlRlbXBvcmFyeURpcmVjdG9yeSgpIGFzIHRlbXA6CiAgICAgICAgICAgIGxvY2tfcGF0aCA9IFBhdGgodGVtcCkgLyAibG9jay5qc29uIgogICAgICAgICAgICBsb2NrX3BhdGgud3JpdGVfdGV4dCgKICAgICAgICAgICAgICAgIGpzb24uZHVtcHMoeyJzdGF0dXMiOiAiRVZJREVOQ0VfUkVBRFkiLCAiaHVtYW5fZ29sZF9hcHByb3ZhbCI6IHsic3RhdHVzIjogIkhVTUFOX0FQUFJPVkVEIn19KSwKICAgICAgICAgICAgICAgIGVuY29kaW5nPSJ1dGYtOCIsCiAgICAgICAgICAgICkKICAgICAgICAgICAgcHJvYyA9IHN1YnByb2Nlc3MucnVuKAogICAgICAgICAgICAgICAgWwogICAgICAgICAgICAgICAgICAgIHN5cy5leGVjdXRhYmxlLAogICAgICAgICAgICAgICAgICAgIHN0cihST09UIC8gInNjcmlwdHMiIC8gImUwIiAvICJjaGVja19ldmlkZW5jZV9sb2NrLnB5IiksCiAgICAgICAgICAgICAgICAgICAgIi0tcmVwby1yb290IiwKICAgICAgICAgICAgICAgICAgICBzdHIoUk9PVCksCiAgICAgICAgICAgICAgICAgICAgIi0tbG9jayIsCiAgICAgICAgICAgICAgICAgICAgc3RyKGxvY2tfcGF0aCksCiAgICAgICAgICAgICAgICBdLAogICAgICAgICAgICAgICAgdGV4dD1UcnVlLAogICAgICAgICAgICAgICAgY2FwdHVyZV9vdXRwdXQ9VHJ1ZSwKICAgICAgICAgICAgICAgIGNoZWNrPUZhbHNlLAogICAgICAgICAgICApCiAgICAgICAgICAgIHNlbGYuYXNzZXJ0RXF1YWwocHJvYy5yZXR1cm5jb2RlLCAxKQogICAgICAgICAgICBzZWxmLmFzc2VydEluKCJzY2hlbWEgdmlvbGF0aW9uIiwgcHJvYy5zdGRvdXQpCiAgICAgICAgICAgIHNlbGYuYXNzZXJ0SW4oIidhcnRpZmFjdHMnIGlzIGEgcmVxdWlyZWQgcHJvcGVydHkiLCBwcm9jLnN0ZG91dCkKCicnJwppZiBtYXJrZXIgbm90IGluIHRlc3RzOgogICAgcmFpc2UgU3lzdGVtRXhpdCgiZXhwZWN0ZWQgdGVzdCBpbnNlcnRpb24gbWFya2VyIG5vdCBmb3VuZCIpCnRlc3RzX3BhdGgud3JpdGVfdGV4dCh0ZXN0cy5yZXBsYWNlKG1hcmtlciwgYWRkaXRpb25zICsgbWFya2VyLCAxKSwgZW5jb2Rpbmc9InV0Zi04IikK
+        run: echo "$PATCH_B64" | base64 -d | python -
 
       - name: Install Experiment 0 validation dependencies
         run: python -m pip install --disable-pip-version-check -r requirements-e0.txt
 
       - name: Verify bounded repair
-        shell: bash
         run: |
-          set -euo pipefail
           python -m compileall -q scripts/e0 tests/e0
           python scripts/e0/validate_contracts.py
           python -m unittest discover -s tests/e0 -v
           python scripts/run_all_tests.py
           git diff --check
 
-      - name: Commit repair and remove one-shot workflow
-        shell: bash
+      - name: Commit bounded repair
         run: |
-          set -euo pipefail
-          rm .github/workflows/one-shot-evidence-lock-fix.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/e0/e0_core.py scripts/e0/check_evidence_lock.py tests/e0/test_evidence_lock_paths.py .github/workflows/one-shot-evidence-lock-fix.yml
+          git add scripts/e0/e0_core.py scripts/e0/check_evidence_lock.py tests/e0/test_evidence_lock_paths.py
           git commit -m "fix(e0): fail closed on malformed Evidence Lock"
           git push origin HEAD:fix/e0-evidence-lock-schema-fail-closed-20260909
