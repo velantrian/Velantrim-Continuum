@@ -1,0 +1,198 @@
+name: One-shot Evidence Lock fail-closed repair
+
+on:
+  push:
+    branches: [fix/e0-evidence-lock-schema-fail-closed-20260909]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.11"
+          check-latest: false
+
+      - name: Apply bounded Evidence Lock repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          core_path = Path("scripts/e0/e0_core.py")
+          core = core_path.read_text(encoding="utf-8")
+          old = '''def verify_lock(lock: dict[str, Any], repo_root: str | Path) -> list[str]:
+              errors: list[str] = []
+              if lock.get("status") != "EVIDENCE_READY":
+                  errors.append("lock status is not EVIDENCE_READY")
+              approval = lock.get("human_gold_approval", {})
+              if approval.get("status") != "HUMAN_APPROVED":
+                  errors.append("human Gold/Oracle approval missing")
+              root = Path(repo_root).resolve()
+              seen: set[str] = set()
+              for entry in lock.get("artifacts", []):
+          '''
+          new = '''def verify_lock(lock: dict[str, Any], repo_root: str | Path) -> list[str]:
+              errors: list[str] = []
+              if lock.get("status") != "EVIDENCE_READY":
+                  errors.append("lock status is not EVIDENCE_READY")
+              approval = lock.get("human_gold_approval")
+              if not isinstance(approval, dict) or approval.get("status") != "HUMAN_APPROVED":
+                  errors.append("human Gold/Oracle approval missing")
+              artifacts = lock.get("artifacts")
+              if not isinstance(artifacts, list) or not artifacts:
+                  errors.append("locked artifacts must be a non-empty list")
+                  return errors
+              root = Path(repo_root).resolve()
+              seen: set[str] = set()
+              for entry in artifacts:
+          '''
+          if old not in core:
+              raise SystemExit("expected verify_lock source block not found")
+          core_path.write_text(core.replace(old, new, 1), encoding="utf-8")
+
+          checker_path = Path("scripts/e0/check_evidence_lock.py")
+          checker = checker_path.read_text(encoding="utf-8")
+          checker = checker.replace(
+              'from pathlib import Path\n\nfrom e0_core import verify_lock\n',
+              'from pathlib import Path\n\nfrom jsonschema import Draft202012Validator\n\nfrom e0_core import verify_lock\n',
+              1,
+          )
+          marker = '''from e0_core import verify_lock
+
+
+def main() -> int:
+          '''
+          replacement = '''from e0_core import verify_lock
+
+
+EVIDENCE_LOCK_SCHEMA = Path("experiments/e0/schema/evidence-lock.schema.json")
+
+
+def _render_json_path(parts) -> str:
+              path = "$"
+              for part in parts:
+                  path += f"[{part}]" if isinstance(part, int) else f".{part}"
+              return path
+
+
+def validate_lock_schema(lock: object, repo_root: str | Path) -> list[str]:
+              schema = json.loads((Path(repo_root).resolve() / EVIDENCE_LOCK_SCHEMA).read_text(encoding="utf-8"))
+              validator = Draft202012Validator(schema)
+              return [
+                  f"{_render_json_path(error.absolute_path)}: schema violation: {error.message}"
+                  for error in sorted(validator.iter_errors(lock), key=lambda item: list(item.absolute_path))
+              ]
+
+
+def main() -> int:
+          '''
+          if marker not in checker:
+              raise SystemExit("expected checker insertion marker not found")
+          checker = checker.replace(marker, replacement, 1)
+          old_main = '''    lock = json.loads(Path(args.lock).read_text(encoding="utf-8"))
+              errors = verify_lock(lock, args.repo_root)
+              if errors:
+          '''
+          new_main = '''    lock = json.loads(Path(args.lock).read_text(encoding="utf-8"))
+              schema_errors = validate_lock_schema(lock, args.repo_root)
+              if schema_errors:
+                  for error in schema_errors:
+                      print(f"ERROR: {error}")
+                  return 1
+              errors = verify_lock(lock, args.repo_root)
+              if errors:
+          '''
+          if old_main not in checker:
+              raise SystemExit("expected checker main block not found")
+          checker_path.write_text(checker.replace(old_main, new_main, 1), encoding="utf-8")
+
+          tests_path = Path("tests/e0/test_evidence_lock_paths.py")
+          tests = tests_path.read_text(encoding="utf-8")
+          tests = tests.replace(
+              'import tempfile\nimport unittest\n',
+              'import json\nimport subprocess\nimport tempfile\nimport unittest\n',
+              1,
+          )
+          marker = '''    def test_duplicate_locked_artifact_path_is_rejected(self) -> None:
+          '''
+          additions = '''    def test_missing_or_empty_artifacts_are_rejected(self) -> None:
+              with tempfile.TemporaryDirectory() as temp:
+                  root = Path(temp)
+                  for artifacts in (None, []):
+                      with self.subTest(artifacts=artifacts):
+                          lock = {
+                              "status": "EVIDENCE_READY",
+                              "human_gold_approval": {"status": "HUMAN_APPROVED"},
+                          }
+                          if artifacts is not None:
+                              lock["artifacts"] = artifacts
+                          errors = verify_lock(lock, root)
+                          self.assertIn("locked artifacts must be a non-empty list", errors)
+
+              def test_cli_rejects_schema_invalid_evidence_lock(self) -> None:
+                  with tempfile.TemporaryDirectory() as temp:
+                      lock_path = Path(temp) / "lock.json"
+                      lock_path.write_text(
+                          json.dumps({"status": "EVIDENCE_READY", "human_gold_approval": {"status": "HUMAN_APPROVED"}}),
+                          encoding="utf-8",
+                      )
+                      proc = subprocess.run(
+                          [
+                              sys.executable,
+                              str(ROOT / "scripts" / "e0" / "check_evidence_lock.py"),
+                              "--repo-root",
+                              str(ROOT),
+                              "--lock",
+                              str(lock_path),
+                          ],
+                          text=True,
+                          capture_output=True,
+                          check=False,
+                      )
+                      self.assertEqual(proc.returncode, 1)
+                      self.assertIn("schema violation", proc.stdout)
+                      self.assertIn("'artifacts' is a required property", proc.stdout)
+
+          '''
+          # Correct accidental indentation in the inserted method block before writing.
+          additions = additions.replace("\n              def test_cli_", "\n\n    def test_cli_")
+          if marker not in tests:
+              raise SystemExit("expected test insertion marker not found")
+          tests_path.write_text(tests.replace(marker, additions + marker, 1), encoding="utf-8")
+          PY
+
+      - name: Install Experiment 0 validation dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-e0.txt
+
+      - name: Verify bounded repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q scripts/e0 tests/e0
+          python scripts/e0/validate_contracts.py
+          python -m unittest discover -s tests/e0 -v
+          python scripts/run_all_tests.py
+          git diff --check
+
+      - name: Commit repair and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/one-shot-evidence-lock-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/e0/e0_core.py scripts/e0/check_evidence_lock.py tests/e0/test_evidence_lock_paths.py .github/workflows/one-shot-evidence-lock-fix.yml
+          git commit -m "fix(e0): fail closed on malformed Evidence Lock"
+          git push origin HEAD:fix/e0-evidence-lock-schema-fail-closed-20260909
