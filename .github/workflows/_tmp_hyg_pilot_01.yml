@@ -20,103 +20,46 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-
           p = Path('scripts/e0/preflight_pilot.py')
           lines = p.read_text().splitlines()
           i = next(i for i,x in enumerate(lines) if x.startswith('TRANSFER_PATH = '))
-          lines[i+1:i+1] = [
-              'CAPTURE_GOLD_PATH = "experiments/e0/gold/approved/capture-gold.v0.1.json"',
-              'TRANSFER_ORACLE_PATH = "experiments/e0/oracle/approved/transfer-oracle.v0.1.json"',
-          ]
+          lines[i+1:i+1] = ['CAPTURE_GOLD_PATH = "experiments/e0/gold/approved/capture-gold.v0.1.json"','TRANSFER_ORACLE_PATH = "experiments/e0/oracle/approved/transfer-oracle.v0.1.json"']
           start = next(i for i,x in enumerate(lines) if x.startswith('def pilot_ids('))
           end = next(i for i,x in enumerate(lines[start+1:], start+1) if x.startswith('def evidence_ids('))
-          replacement = '''def pilot_arm_ids(root: Path) -> tuple[set[str], set[str]]:
-              capture = load_json(root / CAPTURE_PILOT_PATH)
-              transfer = load_json(root / TRANSFER_PATH)
-              capture_ids = {item.get("fixture_id") for item in capture.get("fixtures", []) if item.get("fixture_id")}
-              transfer_ids = {
-                  item.get("scenario_id")
-                  for item in transfer.get("scenarios", [])
-                  if item.get("partition") == "PILOT" and item.get("scenario_id")
-              }
-              return capture_ids, transfer_ids
-
-
-          def pilot_ids(root: Path) -> set[str]:
-              capture_ids, transfer_ids = pilot_arm_ids(root)
-              return capture_ids | transfer_ids
-
-
-          '''.replace('          ', '').splitlines()
-          lines[start:end] = replacement
-
+          lines[start:end] = [
+              'def pilot_arm_ids(root: Path) -> tuple[set[str], set[str]]:',
+              '    capture = load_json(root / CAPTURE_PILOT_PATH)',
+              '    transfer = load_json(root / TRANSFER_PATH)',
+              '    capture_ids = {item.get("fixture_id") for item in capture.get("fixtures", []) if item.get("fixture_id")}',
+              '    transfer_ids = {',
+              '        item.get("scenario_id")',
+              '        for item in transfer.get("scenarios", [])',
+              '        if item.get("partition") == "PILOT" and item.get("scenario_id")',
+              '    }',
+              '    return capture_ids, transfer_ids','','',
+              'def pilot_ids(root: Path) -> set[str]:',
+              '    capture_ids, transfer_ids = pilot_arm_ids(root)',
+              '    return capture_ids | transfer_ids','','',
+          ]
           allowed = next(i for i,x in enumerate(lines) if x.strip() == 'allowed_ref_paths = {')
           loop = next(i for i,x in enumerate(lines[allowed:], allowed) if x.strip() == 'for index, ref in enumerate(refs):')
           indent = lines[allowed][:len(lines[allowed])-len(lines[allowed].lstrip())]
-          lines[allowed:loop] = [indent + 'allowed_ref_paths = {CAPTURE_GOLD_PATH, TRANSFER_ORACLE_PATH}', indent + 'bound_ref_paths: set[str] = set()']
+          lines[allowed:loop] = [indent+'allowed_ref_paths = {CAPTURE_GOLD_PATH, TRANSFER_ORACLE_PATH}', indent+'bound_ref_paths: set[str] = set()']
           expected = next(i for i,x in enumerate(lines) if 'expected_hash = require_sha256(ref.get("sha256")' in x)
-          lines.insert(expected, lines[expected][:len(lines[expected])-len(lines[expected].lstrip())] + 'bound_ref_paths.add(path)')
-
-          unknown_raise = next(i for i,x in enumerate(lines) if 'unknown/non-Pilot fixture or scenario IDs' in x)
-          indent = lines[unknown_raise][:len(lines[unknown_raise])-len(lines[unknown_raise].lstrip())-4]
-          addition = [
-              '',
-              indent + 'capture_pilot_ids, transfer_pilot_ids = pilot_arm_ids(root)',
-              indent + 'requested_ids = set(requested)',
-              indent + 'if requested_ids & capture_pilot_ids and CAPTURE_GOLD_PATH not in bound_ref_paths:',
-              indent + '    raise PreflightError("Capture Pilot requires exact approved Capture Gold reference")',
-              indent + 'if requested_ids & transfer_pilot_ids and TRANSFER_ORACLE_PATH not in bound_ref_paths:',
-              indent + '    raise PreflightError("Transfer Pilot requires exact approved Transfer Oracle reference")',
-          ]
-          lines[unknown_raise+1:unknown_raise+1] = addition
-          p.write_text('\n'.join(lines) + '\n')
+          ind = lines[expected][:len(lines[expected])-len(lines[expected].lstrip())]
+          lines.insert(expected, ind+'bound_ref_paths.add(path)')
+          r = next(i for i,x in enumerate(lines) if 'unknown/non-Pilot fixture or scenario IDs' in x)
+          base_indent = ' ' * 4
+          lines[r+1:r+1] = ['',base_indent+'capture_pilot_ids, transfer_pilot_ids = pilot_arm_ids(root)',base_indent+'requested_ids = set(requested)',base_indent+'if requested_ids & capture_pilot_ids and CAPTURE_GOLD_PATH not in bound_ref_paths:',base_indent+'    raise PreflightError("Capture Pilot requires exact approved Capture Gold reference")',base_indent+'if requested_ids & transfer_pilot_ids and TRANSFER_ORACLE_PATH not in bound_ref_paths:',base_indent+'    raise PreflightError("Transfer Pilot requires exact approved Transfer Oracle reference")']
+          p.write_text('\n'.join(lines)+'\n')
 
           t = Path('tests/e0/test_pilot_control.py')
           lines = t.read_text().splitlines()
           start = next(i for i,x in enumerate(lines) if x.strip() == '"approved_references": [')
           end = next(i for i,x in enumerate(lines[start+1:], start+1) if x.strip() == '],')
-          indent = lines[start][:len(lines[start])-len(lines[start].lstrip())]
-          ref_block = [
-              indent + '"approved_references": [',
-              indent + '    {',
-              indent + '        "path": preflight.CAPTURE_GOLD_PATH,',
-              indent + '        "sha256": sha256(root / preflight.CAPTURE_GOLD_PATH),',
-              indent + '    },',
-              indent + '    {',
-              indent + '        "path": preflight.TRANSFER_ORACLE_PATH,',
-              indent + '        "sha256": sha256(root / preflight.TRANSFER_ORACLE_PATH),',
-              indent + '    },',
-              indent + '],',
-          ]
-          lines[start:end+1] = ref_block
-          insert = next(i for i,x in enumerate(lines) if x.startswith('    def test_canonical_project_state_blocks_pilot_before_owner_authorization'))
-          tests = '''    def test_capture_pilot_requires_capture_gold(self):
-              manifest = valid_manifest()
-              manifest["fixture_or_scenario_ids"] = ["F1-P-A"]
-              manifest["approved_references"] = [ref for ref in manifest["approved_references"] if ref["path"] != preflight.CAPTURE_GOLD_PATH]
-              with self.assertRaisesRegex(preflight.PreflightError, "Capture Pilot requires exact approved Capture Gold"):
-                  validate_structure(manifest)
-
-              def test_transfer_pilot_requires_transfer_oracle(self):
-              manifest = valid_manifest()
-              manifest["fixture_or_scenario_ids"] = ["T-PILOT-01"]
-              manifest["approved_references"] = [ref for ref in manifest["approved_references"] if ref["path"] != preflight.TRANSFER_ORACLE_PATH]
-              with self.assertRaisesRegex(preflight.PreflightError, "Transfer Pilot requires exact approved Transfer Oracle"):
-                  validate_structure(manifest)
-
-              def test_mixed_pilot_requires_both_arm_references(self):
-              manifest = valid_manifest()
-              manifest["approved_references"] = [ref for ref in manifest["approved_references"] if ref["path"] == preflight.CAPTURE_GOLD_PATH]
-              with self.assertRaisesRegex(preflight.PreflightError, "Transfer Pilot requires exact approved Transfer Oracle"):
-                  validate_structure(manifest)
-
-              def test_mixed_pilot_with_both_arm_references_passes(self):
-              messages = validate_structure(valid_manifest())
-              self.assertTrue(any(item.startswith("pilot_ids=") for item in messages))
-
-          '''.replace('              ', '').splitlines()
-          lines[insert:insert] = tests
-          t.write_text('\n'.join(lines) + '\n')
+          ind = lines[start][:len(lines[start])-len(lines[start].lstrip())]
+          lines[start:end+1] = [ind+'"approved_references": [',ind+'    {',ind+'        "path": preflight.CAPTURE_GOLD_PATH,',ind+'        "sha256": sha256(root / preflight.CAPTURE_GOLD_PATH),',ind+'    },',ind+'    {',ind+'        "path": preflight.TRANSFER_ORACLE_PATH,',ind+'        "sha256": sha256(root / preflight.TRANSFER_ORACLE_PATH),',ind+'    },',ind+'],']
+          t.write_text('\n'.join(lines)+'\n')
       - name: Run focused and full E0 tests
         run: |
           python -m unittest tests.e0.test_pilot_control
