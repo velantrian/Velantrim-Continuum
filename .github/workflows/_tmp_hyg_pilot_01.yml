@@ -1,0 +1,168 @@
+name: bounded HYG-PILOT-01 remediation
+on:
+  push:
+    branches:
+      - fix/e0-pilot-arm-reference-binding-20260910
+permissions:
+  contents: write
+jobs:
+  remediate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/e0-pilot-arm-reference-binding-20260910
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply bounded fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('scripts/e0/preflight_pilot.py')
+          s = p.read_text()
+          s = s.replace(
+              'TRANSFER_PATH = "experiments/e0/fixtures/transfer/scenarios.json"\n',
+              'TRANSFER_PATH = "experiments/e0/fixtures/transfer/scenarios.json"\nCAPTURE_GOLD_PATH = "experiments/e0/gold/approved/capture-gold.v0.1.json"\nTRANSFER_ORACLE_PATH = "experiments/e0/oracle/approved/transfer-oracle.v0.1.json"\n',
+              1,
+          )
+          old = '''def pilot_ids(root: Path) -> set[str]:
+              capture = load_json(root / CAPTURE_PILOT_PATH)
+              transfer = load_json(root / TRANSFER_PATH)
+              ids = {item.get("fixture_id") for item in capture.get("fixtures", []) if item.get("fixture_id")}
+              ids.update(
+                  item.get("scenario_id")
+                  for item in transfer.get("scenarios", [])
+                  if item.get("partition") == "PILOT" and item.get("scenario_id")
+              )
+              return ids
+          '''.replace('          ', '')
+          new = '''def pilot_arm_ids(root: Path) -> tuple[set[str], set[str]]:
+              capture = load_json(root / CAPTURE_PILOT_PATH)
+              transfer = load_json(root / TRANSFER_PATH)
+              capture_ids = {item.get("fixture_id") for item in capture.get("fixtures", []) if item.get("fixture_id")}
+              transfer_ids = {
+                  item.get("scenario_id")
+                  for item in transfer.get("scenarios", [])
+                  if item.get("partition") == "PILOT" and item.get("scenario_id")
+              }
+              return capture_ids, transfer_ids
+
+
+          def pilot_ids(root: Path) -> set[str]:
+              capture_ids, transfer_ids = pilot_arm_ids(root)
+              return capture_ids | transfer_ids
+          '''.replace('          ', '')
+          if old not in s:
+              raise SystemExit('pilot_ids anchor not found')
+          s = s.replace(old, new, 1)
+          s = s.replace(
+              '''    allowed_ref_paths = {
+                  "experiments/e0/gold/approved/capture-gold.v0.1.json",
+                  "experiments/e0/oracle/approved/transfer-oracle.v0.1.json",
+              }
+              for index, ref in enumerate(refs):
+          '''.replace('              ', ''),
+              '''    allowed_ref_paths = {CAPTURE_GOLD_PATH, TRANSFER_ORACLE_PATH}
+              bound_ref_paths: set[str] = set()
+              for index, ref in enumerate(refs):
+          '''.replace('              ', ''),
+              1,
+          )
+          s = s.replace(
+              '''        if path not in allowed_ref_paths:
+                  raise PreflightError(f"unapproved reference path: {path}")
+              expected_hash = require_sha256(ref.get("sha256"), f"approved_references[{index}].sha256")
+          '''.replace('              ', ''),
+              '''        if path not in allowed_ref_paths:
+                  raise PreflightError(f"unapproved reference path: {path}")
+              bound_ref_paths.add(path)
+              expected_hash = require_sha256(ref.get("sha256"), f"approved_references[{index}].sha256")
+          '''.replace('              ', ''),
+              1,
+          )
+          anchor = '''    unknown = set(requested) - known_pilot
+              if unknown:
+                  raise PreflightError(f"unknown/non-Pilot fixture or scenario IDs: {sorted(unknown)}")
+          '''.replace('              ', '')
+          replacement = anchor + '''
+              capture_pilot_ids, transfer_pilot_ids = pilot_arm_ids(root)
+              requested_ids = set(requested)
+              if requested_ids & capture_pilot_ids and CAPTURE_GOLD_PATH not in bound_ref_paths:
+                  raise PreflightError("Capture Pilot requires exact approved Capture Gold reference")
+              if requested_ids & transfer_pilot_ids and TRANSFER_ORACLE_PATH not in bound_ref_paths:
+                  raise PreflightError("Transfer Pilot requires exact approved Transfer Oracle reference")
+          '''.replace('              ', '')
+          if anchor not in s:
+              raise SystemExit('requested IDs anchor not found')
+          s = s.replace(anchor, replacement, 1)
+          p.write_text(s)
+
+          t = Path('tests/e0/test_pilot_control.py')
+          s = t.read_text()
+          old_ref = '''        "approved_references": [
+                      {
+                          "path": "experiments/e0/gold/approved/capture-gold.v0.1.json",
+                          "sha256": sha256(root / "experiments/e0/gold/approved/capture-gold.v0.1.json"),
+                      }
+                  ],
+          '''.replace('                  ', '')
+          new_ref = '''        "approved_references": [
+                      {
+                          "path": preflight.CAPTURE_GOLD_PATH,
+                          "sha256": sha256(root / preflight.CAPTURE_GOLD_PATH),
+                      },
+                      {
+                          "path": preflight.TRANSFER_ORACLE_PATH,
+                          "sha256": sha256(root / preflight.TRANSFER_ORACLE_PATH),
+                      },
+                  ],
+          '''.replace('                  ', '')
+          if old_ref not in s:
+              raise SystemExit('valid_manifest refs anchor not found')
+          s = s.replace(old_ref, new_ref, 1)
+          anchor = '''    def test_canonical_project_state_blocks_pilot_before_owner_authorization(self):
+          '''
+          tests = '''    def test_capture_pilot_requires_capture_gold(self):
+                  manifest = valid_manifest()
+                  manifest["fixture_or_scenario_ids"] = ["F1-P-A"]
+                  manifest["approved_references"] = [ref for ref in manifest["approved_references"] if ref["path"] != preflight.CAPTURE_GOLD_PATH]
+                  with self.assertRaisesRegex(preflight.PreflightError, "Capture Pilot requires exact approved Capture Gold"):
+                      validate_structure(manifest)
+
+              def test_transfer_pilot_requires_transfer_oracle(self):
+                  manifest = valid_manifest()
+                  manifest["fixture_or_scenario_ids"] = ["T-PILOT-01"]
+                  manifest["approved_references"] = [ref for ref in manifest["approved_references"] if ref["path"] != preflight.TRANSFER_ORACLE_PATH]
+                  with self.assertRaisesRegex(preflight.PreflightError, "Transfer Pilot requires exact approved Transfer Oracle"):
+                      validate_structure(manifest)
+
+              def test_mixed_pilot_requires_both_arm_references(self):
+                  manifest = valid_manifest()
+                  manifest["approved_references"] = [ref for ref in manifest["approved_references"] if ref["path"] == preflight.CAPTURE_GOLD_PATH]
+                  with self.assertRaisesRegex(preflight.PreflightError, "Transfer Pilot requires exact approved Transfer Oracle"):
+                      validate_structure(manifest)
+
+              def test_mixed_pilot_with_both_arm_references_passes(self):
+                  messages = validate_structure(valid_manifest())
+                  self.assertTrue(any(item.startswith("pilot_ids=") for item in messages))
+
+          '''.replace('              ', '')
+          if anchor not in s:
+              raise SystemExit('test insertion anchor not found')
+          s = s.replace(anchor, tests + anchor, 1)
+          t.write_text(s)
+      - name: Run focused and full E0 tests
+        run: |
+          python -m unittest tests.e0.test_pilot_control
+          python scripts/e0/run_e0_tests.py
+      - name: Commit bounded fix and remove temporary workflow
+        run: |
+          rm .github/workflows/_tmp_hyg_pilot_01.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add scripts/e0/preflight_pilot.py tests/e0/test_pilot_control.py .github/workflows/_tmp_hyg_pilot_01.yml
+          git commit -m "fix(e0): bind Pilot arms to approved references"
+          git push origin HEAD:fix/e0-pilot-arm-reference-binding-20260910
