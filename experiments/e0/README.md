@@ -20,7 +20,7 @@ This directory contains **Experiment-0-only** contracts and fixtures. It is not 
 
 Human Reference review is complete: the approved Capture Gold and Transfer Oracle are bound by `approval/human-reference-approval.v0.2.json` with `HUMAN_APPROVED` status. Candidate artifacts remain historical inputs and do not become authoritative merely because they exist.
 
-Pilot preflight and Evidence Lock validation fail closed on their respective approved-reference and approval bindings. This prevents the evaluated AI system from creating or silently approving its own truth reference.
+Pilot preflight fails closed on arm-specific approved-reference bindings. Evidence Lock validation separately enforces its schema, `HUMAN_APPROVED` status, and repository-relative SHA-256 hashes for the artifacts declared in the lock. This prevents the evaluated AI system from creating or silently approving its own truth reference.
 
 Human Reference approval does **not** adopt `OD-PILOT-01`, authorize Pilot execution, create an Evidence Lock, or authorize E0-C/E0-T Evidence.
 
