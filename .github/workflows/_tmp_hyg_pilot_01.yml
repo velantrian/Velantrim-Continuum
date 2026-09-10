@@ -7,68 +7,24 @@ permissions:
 jobs:
   remediate:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: fix/e0-pilot-arm-reference-binding-20260910
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          python-version: '3.12'
-      - name: Apply bounded fix
-        shell: python
+          python-version: '3.11'
+      - run: python scripts/e0/_tmp_apply_hyg_pilot_01.py
+      - run: python -m pip install --disable-pip-version-check -r requirements-e0.txt
+      - run: python scripts/e0/validate_contracts.py
+      - run: python -m unittest discover -s tests/e0 -v
+      - name: Commit bounded fix
         run: |
-          from pathlib import Path
-          p = Path('scripts/e0/preflight_pilot.py')
-          lines = p.read_text().splitlines()
-          i = next(i for i,x in enumerate(lines) if x.startswith('TRANSFER_PATH = '))
-          lines[i+1:i+1] = ['CAPTURE_GOLD_PATH = "experiments/e0/gold/approved/capture-gold.v0.1.json"','TRANSFER_ORACLE_PATH = "experiments/e0/oracle/approved/transfer-oracle.v0.1.json"']
-          start = next(i for i,x in enumerate(lines) if x.startswith('def pilot_ids('))
-          end = next(i for i,x in enumerate(lines[start+1:], start+1) if x.startswith('def evidence_ids('))
-          lines[start:end] = [
-              'def pilot_arm_ids(root: Path) -> tuple[set[str], set[str]]:',
-              '    capture = load_json(root / CAPTURE_PILOT_PATH)',
-              '    transfer = load_json(root / TRANSFER_PATH)',
-              '    capture_ids = {item.get("fixture_id") for item in capture.get("fixtures", []) if item.get("fixture_id")}',
-              '    transfer_ids = {',
-              '        item.get("scenario_id")',
-              '        for item in transfer.get("scenarios", [])',
-              '        if item.get("partition") == "PILOT" and item.get("scenario_id")',
-              '    }',
-              '    return capture_ids, transfer_ids','','',
-              'def pilot_ids(root: Path) -> set[str]:',
-              '    capture_ids, transfer_ids = pilot_arm_ids(root)',
-              '    return capture_ids | transfer_ids','','',
-          ]
-          allowed = next(i for i,x in enumerate(lines) if x.strip() == 'allowed_ref_paths = {')
-          loop = next(i for i,x in enumerate(lines[allowed:], allowed) if x.strip() == 'for index, ref in enumerate(refs):')
-          indent = lines[allowed][:len(lines[allowed])-len(lines[allowed].lstrip())]
-          lines[allowed:loop] = [indent+'allowed_ref_paths = {CAPTURE_GOLD_PATH, TRANSFER_ORACLE_PATH}', indent+'bound_ref_paths: set[str] = set()']
-          expected = next(i for i,x in enumerate(lines) if 'expected_hash = require_sha256(ref.get("sha256")' in x)
-          ind = lines[expected][:len(lines[expected])-len(lines[expected].lstrip())]
-          lines.insert(expected, ind+'bound_ref_paths.add(path)')
-          r = next(i for i,x in enumerate(lines) if 'unknown/non-Pilot fixture or scenario IDs' in x)
-          base_indent = ' ' * 4
-          lines[r+1:r+1] = ['',base_indent+'capture_pilot_ids, transfer_pilot_ids = pilot_arm_ids(root)',base_indent+'requested_ids = set(requested)',base_indent+'if requested_ids & capture_pilot_ids and CAPTURE_GOLD_PATH not in bound_ref_paths:',base_indent+'    raise PreflightError("Capture Pilot requires exact approved Capture Gold reference")',base_indent+'if requested_ids & transfer_pilot_ids and TRANSFER_ORACLE_PATH not in bound_ref_paths:',base_indent+'    raise PreflightError("Transfer Pilot requires exact approved Transfer Oracle reference")']
-          p.write_text('\n'.join(lines)+'\n')
-
-          t = Path('tests/e0/test_pilot_control.py')
-          lines = t.read_text().splitlines()
-          start = next(i for i,x in enumerate(lines) if x.strip() == '"approved_references": [')
-          end = next(i for i,x in enumerate(lines[start+1:], start+1) if x.strip() == '],')
-          ind = lines[start][:len(lines[start])-len(lines[start].lstrip())]
-          lines[start:end+1] = [ind+'"approved_references": [',ind+'    {',ind+'        "path": preflight.CAPTURE_GOLD_PATH,',ind+'        "sha256": sha256(root / preflight.CAPTURE_GOLD_PATH),',ind+'    },',ind+'    {',ind+'        "path": preflight.TRANSFER_ORACLE_PATH,',ind+'        "sha256": sha256(root / preflight.TRANSFER_ORACLE_PATH),',ind+'    },',ind+'],']
-          t.write_text('\n'.join(lines)+'\n')
-      - name: Run focused and full E0 tests
-        run: |
-          python -m unittest tests.e0.test_pilot_control
-          python scripts/e0/run_e0_tests.py
-      - name: Commit bounded fix and remove temporary workflow
-        run: |
-          rm .github/workflows/_tmp_hyg_pilot_01.yml
+          rm .github/workflows/_tmp_hyg_pilot_01.yml scripts/e0/_tmp_apply_hyg_pilot_01.py
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add scripts/e0/preflight_pilot.py tests/e0/test_pilot_control.py .github/workflows/_tmp_hyg_pilot_01.yml
+          git add -A
           git commit -m "fix(e0): bind Pilot arms to approved references"
           git push origin HEAD:fix/e0-pilot-arm-reference-binding-20260910
