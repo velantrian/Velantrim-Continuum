@@ -55,9 +55,13 @@ def valid_manifest(root: Path = ROOT, *, request_sha: str = "d" * 64) -> dict:
         },
         "approved_references": [
             {
-                "path": "experiments/e0/gold/approved/capture-gold.v0.1.json",
-                "sha256": sha256(root / "experiments/e0/gold/approved/capture-gold.v0.1.json"),
-            }
+                "path": preflight.CAPTURE_GOLD_PATH,
+                "sha256": sha256(root / preflight.CAPTURE_GOLD_PATH),
+            },
+            {
+                "path": preflight.TRANSFER_ORACLE_PATH,
+                "sha256": sha256(root / preflight.TRANSFER_ORACLE_PATH),
+            },
         ],
         "fixture_or_scenario_ids": ["F1-P-A", "T-PILOT-01"],
         "request_sha256": request_sha,
