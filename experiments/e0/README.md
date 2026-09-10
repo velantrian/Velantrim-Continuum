@@ -7,17 +7,22 @@ This directory contains **Experiment-0-only** contracts and fixtures. It is not 
 - `fixtures/capture/pilot/` — harness-validation wording; never architecture evidence.
 - `fixtures/capture/evidence/` — held-out evidence wording; must not be used to tune the harness after evidence lock.
 - `fixtures/transfer/scenarios.json` — one pilot and two evidence transfer scenarios.
-- `gold/candidates/` — proposed capture Gold awaiting human experimenter review.
-- `oracle/candidates/` — proposed transfer Oracle awaiting human experimenter review.
+- `gold/candidates/` — historical AI-proposed Capture Gold candidates; not authoritative references.
+- `oracle/candidates/` — historical AI-proposed Transfer Oracle candidates; not authoritative references.
+- `gold/approved/capture-gold.v0.1.json` — human-approved Capture Gold reference.
+- `oracle/approved/transfer-oracle.v0.1.json` — human-approved Transfer Oracle reference.
+- `approval/human-reference-approval.v0.2.json` — human approval record binding the approved references.
 - `schema/` — bounded machine contracts for Experiment 0.
 
 ## Human Gold / Oracle gate
 
 `AI_PROPOSED_DRAFT` is **not** authoritative Gold or Oracle.
 
-Before a pilot or evidence readiness can be declared, a human experimenter must review the candidate semantics, correct them if needed, and explicitly approve a versioned reference artifact. The harness/evidence-lock validators fail closed while approval status is not `HUMAN_APPROVED`.
+Human Reference review is complete: the approved Capture Gold and Transfer Oracle are bound by `approval/human-reference-approval.v0.2.json` with `HUMAN_APPROVED` status. Candidate artifacts remain historical inputs and do not become authoritative merely because they exist.
 
-This prevents the evaluated AI system from creating or silently approving its own truth reference.
+Pilot preflight and Evidence Lock validation fail closed on their respective approved-reference and approval bindings. This prevents the evaluated AI system from creating or silently approving its own truth reference.
+
+Human Reference approval does **not** adopt `OD-PILOT-01`, authorize Pilot execution, create an Evidence Lock, or authorize E0-C/E0-T Evidence.
 
 ## C2 pre/post clarification reference
 
