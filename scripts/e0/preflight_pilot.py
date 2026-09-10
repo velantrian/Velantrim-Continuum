@@ -24,6 +24,8 @@ APPROVAL_PATH = "experiments/e0/approval/human-reference-approval.v0.2.json"
 PROJECT_STATE_PATH = "project-state.json"
 CAPTURE_PILOT_PATH = "experiments/e0/fixtures/capture/pilot/fixtures.json"
 TRANSFER_PATH = "experiments/e0/fixtures/transfer/scenarios.json"
+CAPTURE_GOLD_PATH = "experiments/e0/gold/approved/capture-gold.v0.1.json"
+TRANSFER_ORACLE_PATH = "experiments/e0/oracle/approved/transfer-oracle.v0.1.json"
 ALLOWED_POSTURES = {"UNCONTROLLED_LOCAL_ADVISORY"}
 PILOT_OUTPUT_DESTINATION = ".velantrim-continuum-pilot-runs"
 PILOT_MANIFEST_PREFIX = "experiments/e0/pilot/"
@@ -161,16 +163,21 @@ def reject_secret_material(value: Any, path: str = "manifest") -> None:
             reject_secret_material(child, f"{path}[{index}]")
 
 
-def pilot_ids(root: Path) -> set[str]:
+def pilot_arm_ids(root: Path) -> tuple[set[str], set[str]]:
     capture = load_json(root / CAPTURE_PILOT_PATH)
     transfer = load_json(root / TRANSFER_PATH)
-    ids = {item.get("fixture_id") for item in capture.get("fixtures", []) if item.get("fixture_id")}
-    ids.update(
+    capture_ids = {item.get("fixture_id") for item in capture.get("fixtures", []) if item.get("fixture_id")}
+    transfer_ids = {
         item.get("scenario_id")
         for item in transfer.get("scenarios", [])
         if item.get("partition") == "PILOT" and item.get("scenario_id")
-    )
-    return ids
+    }
+    return capture_ids, transfer_ids
+
+
+def pilot_ids(root: Path) -> set[str]:
+    capture_ids, transfer_ids = pilot_arm_ids(root)
+    return capture_ids | transfer_ids
 
 
 def evidence_ids(root: Path) -> set[str]:
@@ -391,16 +398,15 @@ def validate_manifest(
     refs = manifest.get("approved_references")
     if not isinstance(refs, list) or not refs:
         raise PreflightError("approved_references must be a non-empty list")
-    allowed_ref_paths = {
-        "experiments/e0/gold/approved/capture-gold.v0.1.json",
-        "experiments/e0/oracle/approved/transfer-oracle.v0.1.json",
-    }
+    allowed_ref_paths = {CAPTURE_GOLD_PATH, TRANSFER_ORACLE_PATH}
+    bound_ref_paths: set[str] = set()
     for index, ref in enumerate(refs):
         if not isinstance(ref, dict):
             raise PreflightError(f"approved_references[{index}] must be an object")
         path = require_string(ref.get("path"), f"approved_references[{index}].path")
         if path not in allowed_ref_paths:
             raise PreflightError(f"unapproved reference path: {path}")
+        bound_ref_paths.add(path)
         expected_hash = require_sha256(ref.get("sha256"), f"approved_references[{index}].sha256")
         if sha256_file(root / path) != expected_hash:
             raise PreflightError(f"approved reference hash mismatch: {path}")
@@ -415,6 +421,13 @@ def validate_manifest(
     unknown = set(requested) - known_pilot
     if unknown:
         raise PreflightError(f"unknown/non-Pilot fixture or scenario IDs: {sorted(unknown)}")
+
+    capture_pilot_ids, transfer_pilot_ids = pilot_arm_ids(root)
+    requested_ids = set(requested)
+    if requested_ids & capture_pilot_ids and CAPTURE_GOLD_PATH not in bound_ref_paths:
+        raise PreflightError("Capture Pilot requires exact approved Capture Gold reference")
+    if requested_ids & transfer_pilot_ids and TRANSFER_ORACLE_PATH not in bound_ref_paths:
+        raise PreflightError("Transfer Pilot requires exact approved Transfer Oracle reference")
 
     posture = manifest.get("execution_posture")
     if posture == "ISOLATED_RUNNER_CONTRACT":
