@@ -18,7 +18,6 @@ from preflight_pilot import (
     PILOT_OUTPUT_DESTINATION,
     PreflightError,
     ensure_clean_worktree,
-    run_git,
     sha256_bytes,
     validate_canonical_authorization,
     validate_human_approval,

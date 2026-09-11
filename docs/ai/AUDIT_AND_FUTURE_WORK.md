@@ -1,5 +1,10 @@
 # 🌎 Velantrim Continuum / IDPS — Audit & Future Work Ledger
 
+> **HISTORICAL AUDIT / FUTURE-WORK LEDGER — NOT CURRENT STATE**  
+> The dated checkpoint and queue below are preserved as historical research/audit record.  
+> For current project state, read `project-state.json`, `STATUS.md`, `docs/ai/CURRENT_STATE.md`, and verify live GitHub lifecycle facts directly.  
+> Historical queue entries do **not** authorize implementation, Pilot, Evidence Lock, E0-C/E0-T, runtime, architecture, or ecosystem integration.
+
 **Repository:** `velantrian/Velantrim-Continuum`  
 **Default branch:** `main`  
 **Role:** documentation / audit / governance only  
