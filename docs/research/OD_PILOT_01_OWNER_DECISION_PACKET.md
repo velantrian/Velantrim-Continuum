@@ -1,5 +1,10 @@
 # OD-PILOT-01 — Owner Decision Packet
 
+> **HISTORICAL / SUPERSEDED PREPARATION PACKET**  
+> The original preparation-pending status below is preserved as historical pre-decision context.  
+> Preparation was subsequently authorized by `OD_PILOT_01_PREP_DECISION.md` as `GO — PREPARE BOUNDED PILOT PACKAGE`.  
+> This supersession does **not** adopt `OD-PILOT-01`, authorize Pilot execution, create package A / activation B, create an Evidence Lock, or authorize E0-C/E0-T Evidence.
+
 > **Status:** `PREPARED — OWNER PREPARATION DECISION PENDING`  
 > **Preparation gate ID:** `OD-PILOT-01-PREP`  
 > **Decision:** whether to authorize **preparation of one future bounded `PILOT — NOT EVIDENCE` package only** under the controls merged by PR #29.  
