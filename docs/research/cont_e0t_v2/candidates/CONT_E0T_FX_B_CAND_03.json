@@ -13,18 +13,13 @@
     "task_position": "Section 3 of 5 in progress",
     "constraints": [
       {
+        "id": "c-email-outbound",
+        "text": "Email is an outbound communication",
+        "current": true
+      },
+      {
         "id": "c-fmt",
         "text": "Use the internal template",
-        "current": true
-      },
-      {
-        "id": "c-hold-pine",
-        "text": "HOLD-pine applies to SMS",
-        "current": true
-      },
-      {
-        "id": "c-mail-ok",
-        "text": "Internal draft copies may be emailed",
         "current": true
       },
       {
@@ -33,8 +28,28 @@
         "current": true
       },
       {
+        "id": "c-hold-elm",
+        "text": "HOLD-elm applies to Slack posts",
+        "current": true
+      },
+      {
+        "id": "c-hold-oak",
+        "text": "HOLD-oak applies to public blog posts",
+        "current": true
+      },
+      {
+        "id": "c-hold-pine",
+        "text": "HOLD-pine applies to SMS",
+        "current": true
+      },
+      {
         "id": "c-len",
         "text": "Keep the digest under 800 words",
+        "current": true
+      },
+      {
+        "id": "c-mail-ok",
+        "text": "Internal draft copies may be emailed",
         "current": true
       },
       {
@@ -48,23 +63,8 @@
         "current": true
       },
       {
-        "id": "c-email-outbound",
-        "text": "Email is an outbound communication",
-        "current": true
-      },
-      {
-        "id": "c-hold-oak",
-        "text": "HOLD-oak applies to public blog posts",
-        "current": true
-      },
-      {
         "id": "c-src",
         "text": "Cite only approved internal sources",
-        "current": true
-      },
-      {
-        "id": "c-hold-elm",
-        "text": "HOLD-elm applies to Slack posts",
         "current": true
       }
     ],
@@ -94,11 +94,6 @@
     ],
     "unresolved_items": [
       {
-        "id": "u-pine",
-        "text": "HOLD-pine clearance is UNKNOWN",
-        "current": true
-      },
-      {
         "id": "u-ash",
         "text": "HOLD-ash clearance is UNKNOWN",
         "current": true
@@ -112,6 +107,11 @@
         "id": "u-oak",
         "text": "HOLD-oak clearance is UNKNOWN",
         "current": true
+      },
+      {
+        "id": "u-pine",
+        "text": "HOLD-pine clearance is UNKNOWN",
+        "current": true
       }
     ],
     "contested_claims": [
@@ -123,12 +123,6 @@
     ],
     "current_rationale": "Keep channel facts, class facts, precedence, and ticket status separate. Do not invent ticket clearance.",
     "unknown_operations": [
-      {
-        "id": "op-pine",
-        "text": "HOLD-pine clearance check",
-        "current": true,
-        "status": "UNKNOWN"
-      },
       {
         "id": "op-ash",
         "text": "HOLD-ash clearance check",
@@ -144,6 +138,12 @@
       {
         "id": "op-oak",
         "text": "HOLD-oak clearance check",
+        "current": true,
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "op-pine",
+        "text": "HOLD-pine clearance check",
         "current": true,
         "status": "UNKNOWN"
       }
@@ -328,5 +328,7 @@
       "resume_atoms": [],
       "why_not_on_T1": "T1 has four current holds: elm, oak (seq1), ash+pine (seq2). Gold is the strict-before set {elm, oak}, not 'all holds except ash' (that wrongly includes pine) and not 'the unique outbound hold' (that is ash). List order is pine, ash, oak, elm — not the gold set and not recency. IDs do not encode time. Rationale/process_position do not state order."
     }
-  ]
+  ],
+  "t1_list_order": "CANONICAL_ID_ASC_NON_TEMPORAL",
+  "t1_list_order_note": "T1 list order is non-temporal and non-semantic. Arrays are serialized by stable id, not insertion/transition time. thin_trajectory is the only temporal carrier."
 }
