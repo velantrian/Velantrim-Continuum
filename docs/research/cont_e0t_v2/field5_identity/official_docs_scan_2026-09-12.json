@@ -1,0 +1,187 @@
+{
+  "captured_at_utc": "2026-09-12T16:22:47Z",
+  "pages": [
+    {
+      "name": "pricing",
+      "url": "https://api-docs.deepseek.com/quick_start/pricing/",
+      "curl_status_line": "200 https://api-docs.deepseek.com/quick_start/pricing/",
+      "bytes": 23359,
+      "sha256": "755aa9b488d1185cba016ca4de3b3b6b8f593f5e13e5f9f961305289a5c8d242",
+      "contains": {
+        "deepseek-flash": true,
+        "deepseek-v4-flash": true,
+        "deepseek-v4-pro": true,
+        "DeepSeek-V4.1-Flash": true,
+        "DeepSeek-V4-Flash-0731": false,
+        "DeepSeek-V4-Pro-0813": true,
+        "September 14": true,
+        "04:00 UTC": false
+      },
+      "snippets": [
+        "ens by the model. Model Details ​ MODEL deepseek-flash (1) deepseek-v4-pro (2) BASE URL (OpenAI Format) https://api.deepseek.com BASE URL (Anthropic Format) https://api.deepseek.com/anthropic MODEL VERSION DeepSeek",
+        "Concurrency Limit (4) 2500 500 (1) Use deepseek-flash as the model name. The legacy names deepseek-v4-flash and deepseek-v4-flash-vision-exp are still accepted, but the corresponding models have been retired, thei",
+        "r requests are served by the DeepSeek-V4.1-Flash model and billed at the Flash price. (2) In response to user demand, we have decided to continue providing API services for DeepSeek V4 Pro after September 14,"
+      ]
+    },
+    {
+      "name": "home",
+      "url": "https://api-docs.deepseek.com/",
+      "curl_status_line": "200 https://api-docs.deepseek.com/",
+      "bytes": 46116,
+      "sha256": "6e2eb037db92ebef6a8f6408d87c12318c973388d6e27321606bb0e67dd67a6c",
+      "contains": {
+        "deepseek-flash": true,
+        "deepseek-v4-flash": true,
+        "deepseek-v4-pro": true,
+        "DeepSeek-V4.1-Flash": true,
+        "DeepSeek-V4-Flash-0731": false,
+        "DeepSeek-V4-Pro-0813": false,
+        "September 14": true,
+        "04:00 UTC": false
+      },
+      "snippets": [
+        "opic api_key apply for an API key model deepseek-flash (1) deepseek-v4-pro (2) (1) Use deepseek-flash as the model name. The legacy names deepseek-v4-flash and deepseek-v4-flash-vision-exp are still accepted, but t",
+        "tired, their requests are served by the DeepSeek-V4.1-Flash model and billed at the Flash price. (2) In response to user demand, we have decided to continue providing API services for DeepSeek V4 Pro after September 14,",
+        "${DEEPSEEK_API_KEY}\" \\ -d '{ \"model\": \"deepseek-flash\", \"messages\": [ {\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"Hello!\"} ], \"thinking\": {\"type\": \"enabled\"}, \"reaso",
+        "chat . completions . create ( model = \"deepseek-flash\" , messages = [ { \"role\" : \"system\" , \"content\" : \"You are a helpful assistant\" } , { \"role\" : \"user\" , \"content\" : \"Hello\" } , ] , stream = False , reasoning_",
+        "re a helpful assistant.\" } ] , model : \"deepseek-flash\" , thinking : { \"type\" : \"enabled\" } , reasoning_effort : \"high\" , stream : false , } ) ; console . log ( completion . choices [ 0 ] . message . content ) ; }"
+      ]
+    },
+    {
+      "name": "news260910",
+      "url": "https://api-docs.deepseek.com/news/news260910/",
+      "curl_status_line": "200 https://api-docs.deepseek.com/news/news260910/",
+      "bytes": 27838,
+      "sha256": "420cbb7b5e8e97632fa45cb49cd2b5f22b57c8f9e125d1c34a22bd67bbc33705",
+      "contains": {
+        "deepseek-flash": true,
+        "deepseek-v4-flash": true,
+        "deepseek-v4-pro": true,
+        "DeepSeek-V4.1-Flash": true,
+        "DeepSeek-V4-Flash-0731": false,
+        "DeepSeek-V4-Pro-0813": false,
+        "September 14": true,
+        "04:00 UTC": true
+      },
+      "snippets": [
+        "DeepSeek-V4.1-Flash: Smarter, Faster, More Efficient | DeepSeek API Docs Skip to main content DeepSeek API Docs English English 中文（中国） DeepSeek Platform Quick Start Your First API",
+        "ng the Anthropic API API Reference News DeepSeek-V4.1-Flash Release 2026/09/10 DeepSeek-V4-Flash-Vision-Exp Release 2026/08/21 DeepSeek-V4-Pro GA Release 2026/08/13 DeepSeek-V4 Preview Release 2026/04/24 DeepSeek-V3.2 R",
+        "/25 Other Resources FAQ Change Log News DeepSeek-V4.1-Flash Release 2026/09/10 On this page DeepSeek-V4.1-Flash: Smarter, Faster, More Efficient 🚀 Introducing DeepSeek-V4.1-Flash: smarter, faster, more efficient. 🔹 Intr",
+        "multimodal support. ​ Set your model to deepseek-flash . 🔹 V4-Flash & V4-Flash-Vision-Exp are retired. For compatibility, deepseek-v4-flash and deepseek-v4-flash-vision-exp temporarily route to V4.1-Flash. 🔹 Tests",
+        "We're phasing out V4-Pro. 🔹 Starting at 04:00 UTC on Sept 14, 2026, all deepseek-v4-pro requests will route to V4.1-Flash at V4.1-Flash rates. This will continue until V4.1-Pro launches. 🤝 Official partners Wo",
+        "to save. 🔹 New pricing takes effect at 04:00 UTC on Sept 10, 2026. 🌐 Supporting open source. Expanding deployment options. ​ We'll work closely with the open-source community on V4.1-Flash inference support a",
+        "del: https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash 🔹 Paper: https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/main/DeepSeek_V41_Tech_Report.pdf Previous Delete File Next DeepSeek-V4-Flash-Vision-Exp R"
+      ]
+    },
+    {
+      "name": "create_chat",
+      "url": "https://api-docs.deepseek.com/api/create-chat-completion/",
+      "curl_status_line": "200 https://api-docs.deepseek.com/api/create-chat-completion/",
+      "bytes": 147737,
+      "sha256": "a09b0e9c9b74a8cb1f62e1006b4931320be9c640cc274af54aa72f0e053b64a5",
+      "contains": {
+        "deepseek-flash": true,
+        "deepseek-v4-flash": false,
+        "deepseek-v4-pro": true,
+        "DeepSeek-V4.1-Flash": false,
+        "DeepSeek-V4-Flash-0731": false,
+        "DeepSeek-V4-Pro-0813": false,
+        "September 14": false,
+        "04:00 UTC": false
+      },
+      "snippets": [
+        "odel string required Possible values: [ deepseek-flash , deepseek-v4-pro ] ID of the model to use. Use deepseek-flash or deepseek-v4-pro . thinking object nullable Controls the switch between thinking and non-think",
+        "l } ], \"created\": 1705651092, \"model\": \"deepseek-flash\", \"object\": \"chat.completion\", \"system_fingerprint\": \"fp_7a09fdf9c2\", \"usage\": { \"completion_tokens\": 10, \"prompt_tokens\": 16, \"total_tokens\": 26, \"prompt_toke",
+        "ull}], \"created\": 1718345013, \"model\": \"deepseek-flash\", \"system_fingerprint\": \"fp_a49d71b8a1\", \"object\": \"chat.completion.chunk\"} data: {\"choices\": [{\"delta\": {\"content\": \"Hello\", \"role\": \"assistant\"}, \"finish_rea",
+        "d8bfc032625086f14113c411638\", \"model\": \"deepseek-flash\", \"object\": \"chat.completion.chunk\", \"system_fingerprint\": \"fp_a49d71b8a1\"} data: {\"choices\": [{\"delta\": {\"content\": \"!\", \"role\": \"assistant\"}, \"finish_reason\"",
+        "d8bfc032625086f14113c411638\", \"model\": \"deepseek-flash\", \"object\": \"chat.completion.chunk\", \"system_fingerprint\": \"fp_a49d71b8a1\"} data: {\"choices\": [{\"delta\": {\"content\": \" How\", \"role\": \"assistant\"}, \"finish_reas",
+        "d8bfc032625086f14113c411638\", \"model\": \"deepseek-flash\", \"object\": \"chat.completion.chunk\", \"system_fingerprint\": \"fp_a49d71b8a1\"} data: {\"choices\": [{\"delta\": {\"content\": \" can\", \"role\": \"assistant\"}, \"finish_reas",
+        "d8bfc032625086f14113c411638\", \"model\": \"deepseek-flash\", \"object\": \"chat.completion.chunk\", \"system_fingerprint\": \"fp_a49d71b8a1\"} data: {\"choices\": [{\"delta\": {\"content\": \" I\", \"role\": \"assistant\"}, \"finish_reason",
+        "d8bfc032625086f14113c411638\", \"model\": \"deepseek-flash\", \"object\": \"chat.completion.chunk\", \"system_fingerprint\": \"fp_a49d71b8a1\"} data: {\"choices\": [{\"delta\": {\"content\": \" assist\", \"role\": \"assistant\"}, \"finish_r",
+        "d8bfc032625086f14113c411638\", \"model\": \"deepseek-flash\", \"object\": \"chat.completion.chunk\", \"system_fingerprint\": \"fp_a49d71b8a1\"} data: {\"choices\": [{\"delta\": {\"content\": \" you\", \"role\": \"assistant\"}, \"finish_reas",
+        "d8bfc032625086f14113c411638\", \"model\": \"deepseek-flash\", \"object\": \"chat.completion.chunk\", \"system_fingerprint\": \"fp_a49d71b8a1\"} data: {\"choices\": [{\"delta\": {\"content\": \" today\", \"role\": \"assistant\"}, \"finish_re",
+        "d8bfc032625086f14113c411638\", \"model\": \"deepseek-flash\", \"object\": \"chat.completion.chunk\", \"system_fingerprint\": \"fp_a49d71b8a1\"} data: {\"choices\": [{\"delta\": {\"content\": \"?\", \"role\": \"assistant\"}, \"finish_reason\"",
+        "d8bfc032625086f14113c411638\", \"model\": \"deepseek-flash\", \"object\": \"chat.completion.chunk\", \"system_fingerprint\": \"fp_a49d71b8a1\"} data: {\"choices\": [{\"delta\": {\"content\": \"\", \"role\": null}, \"finish_reason\": \"stop\"",
+        "d8bfc032625086f14113c411638\", \"model\": \"deepseek-flash\", \"object\": \"chat.completion.chunk\", \"system_fingerprint\": \"fp_a49d71b8a1\", \"usage\": {\"completion_tokens\": 9, \"prompt_tokens\": 17, \"total_tokens\": 26, \"prompt_"
+      ]
+    },
+    {
+      "name": "pricing_details_usd",
+      "url": "https://api-docs.deepseek.com/quick_start/pricing-details-usd",
+      "curl_status_line": "200 https://api-docs.deepseek.com/quick_start/pricing-details-usd",
+      "bytes": 46116,
+      "sha256": "6e2eb037db92ebef6a8f6408d87c12318c973388d6e27321606bb0e67dd67a6c",
+      "contains": {
+        "deepseek-flash": true,
+        "deepseek-v4-flash": true,
+        "deepseek-v4-pro": true,
+        "DeepSeek-V4.1-Flash": true,
+        "DeepSeek-V4-Flash-0731": false,
+        "DeepSeek-V4-Pro-0813": false,
+        "September 14": true,
+        "04:00 UTC": false
+      },
+      "snippets": [
+        "opic api_key apply for an API key model deepseek-flash (1) deepseek-v4-pro (2) (1) Use deepseek-flash as the model name. The legacy names deepseek-v4-flash and deepseek-v4-flash-vision-exp are still accepted, but t",
+        "tired, their requests are served by the DeepSeek-V4.1-Flash model and billed at the Flash price. (2) In response to user demand, we have decided to continue providing API services for DeepSeek V4 Pro after September 14,",
+        "${DEEPSEEK_API_KEY}\" \\ -d '{ \"model\": \"deepseek-flash\", \"messages\": [ {\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"Hello!\"} ], \"thinking\": {\"type\": \"enabled\"}, \"reaso",
+        "chat . completions . create ( model = \"deepseek-flash\" , messages = [ { \"role\" : \"system\" , \"content\" : \"You are a helpful assistant\" } , { \"role\" : \"user\" , \"content\" : \"Hello\" } , ] , stream = False , reasoning_",
+        "re a helpful assistant.\" } ] , model : \"deepseek-flash\" , thinking : { \"type\" : \"enabled\" } , reasoning_effort : \"high\" , stream : false , } ) ; console . log ( completion . choices [ 0 ] . message . content ) ; }"
+      ]
+    },
+    {
+      "name": "reasoning_model",
+      "url": "https://api-docs.deepseek.com/guides/reasoning_model",
+      "curl_status_line": "200 https://api-docs.deepseek.com/guides/reasoning_model",
+      "bytes": 46116,
+      "sha256": "6e2eb037db92ebef6a8f6408d87c12318c973388d6e27321606bb0e67dd67a6c",
+      "contains": {
+        "deepseek-flash": true,
+        "deepseek-v4-flash": true,
+        "deepseek-v4-pro": true,
+        "DeepSeek-V4.1-Flash": true,
+        "DeepSeek-V4-Flash-0731": false,
+        "DeepSeek-V4-Pro-0813": false,
+        "September 14": true,
+        "04:00 UTC": false
+      },
+      "snippets": [
+        "opic api_key apply for an API key model deepseek-flash (1) deepseek-v4-pro (2) (1) Use deepseek-flash as the model name. The legacy names deepseek-v4-flash and deepseek-v4-flash-vision-exp are still accepted, but t",
+        "tired, their requests are served by the DeepSeek-V4.1-Flash model and billed at the Flash price. (2) In response to user demand, we have decided to continue providing API services for DeepSeek V4 Pro after September 14,",
+        "${DEEPSEEK_API_KEY}\" \\ -d '{ \"model\": \"deepseek-flash\", \"messages\": [ {\"role\": \"system\", \"content\": \"You are a helpful assistant.\"}, {\"role\": \"user\", \"content\": \"Hello!\"} ], \"thinking\": {\"type\": \"enabled\"}, \"reaso",
+        "chat . completions . create ( model = \"deepseek-flash\" , messages = [ { \"role\" : \"system\" , \"content\" : \"You are a helpful assistant\" } , { \"role\" : \"user\" , \"content\" : \"Hello\" } , ] , stream = False , reasoning_",
+        "re a helpful assistant.\" } ] , model : \"deepseek-flash\" , thinking : { \"type\" : \"enabled\" } , reasoning_effort : \"high\" , stream : false , } ) ; console . log ( completion . choices [ 0 ] . message . content ) ; }"
+      ]
+    },
+    {
+      "name": "updates",
+      "url": "https://api-docs.deepseek.com/updates",
+      "curl_status_line": "200 https://api-docs.deepseek.com/updates/",
+      "bytes": 50934,
+      "sha256": "da7f5c4919ed8874ff575dc1c7c91da36e5b141a1b17b43309f3d75156469185",
+      "contains": {
+        "deepseek-flash": true,
+        "deepseek-v4-flash": true,
+        "deepseek-v4-pro": true,
+        "DeepSeek-V4.1-Flash": true,
+        "DeepSeek-V4-Flash-0731": true,
+        "DeepSeek-V4-Pro-0813": false,
+        "September 14": true,
+        "04:00 UTC": false
+      },
+      "snippets": [
+        "this page Change Log Date: 2026-09-10 ​ DeepSeek-V4.1-Flash Release ​ Today, we officially release the DeepSeek-V4.1-Flash model. It is the smallest model in our new architecture family, with native multimodal visual un",
+        "modal support. Change the model name to deepseek-flash to call the latest V4.1 Flash model. The previous-generation models V4 Flash and V4 Flash Vision Exp have been retired; for compatibility, the model names deep",
+        "seek-v4-flash and deepseek-v4-flash-vision-exp are temporarily routed to V4.1 Flash. In response to user demand, we have decided to continue providing API services for DeepSeek V4 Pro after Septe",
+        "pricing adjustment With the release of DeepSeek-V4.1-Flash, API prices have been reduced accordingly. For details, please refer to Models & Pricing . For more details, please refer to this documentation . Date: 2026-08",
+        "that can be accessed by setting model='deepseek-v4-flash-vision-exp' . Terminal Bench 2.1: 83.9 NL2Repo: 57.7 DeepSWE: 59.3 DSBench-Hard: 63.6 AutomationBench (Public): 25.7 ApexBench (Pass@1): 36.5 Agents' Last Exam",
+        "nchanged — simply set the model name to deepseek-v4-pro to use the latest version. Significantly enhanced Agent capabilities The GA version of DeepSeek V4 Pro greatly enhances agent capabilities, with particularly s",
+        "nchanged — simply set the model name to deepseek-v4-flash to use the latest version. Significantly enhanced agent capabilities, with benchmark results far exceeding V4-Pro-Preview: Terminal Bench 2.1: 82.7 NL2Repo: 54",
+        "on, please refer to the documentation . DeepSeek-V4-Flash-0731 keeps the same model architecture and size as DeepSeek-V4-Flash-Preview, and was only re-post-trained. Note: This update only upgrades the DeepSeek-V4-Flash AP",
+        "nd the model parameter should be set to deepseek-v4-pro or deepseek-v4-flash . The two legacy API model names, deepseek-chat and deepseek-reasoner , will be discontinued in three months (2026-07-24). During the curr",
+        "non-thinking mode and thinking mode of deepseek-v4-flash , respectively. For more details, please refer to this documentation . Date: 2025-12-01 ​ DeepSeek-V3.2 ​ Both deepseek-chat and deepseek-reasoner have been up",
+        "s DeepSeek API Upgrade Date: 2026-09-10 DeepSeek-V4.1-Flash Release Date: 2026-08-21 DeepSeek-V4-Flash-Vision-Exp Release Date: 2026-08-13 DeepSeek-V4-Pro Update Date: 2026-07-31 DeepSeek-V4-Flash Update Date: 2026-04-2"
+      ]
+    }
+  ]
+}

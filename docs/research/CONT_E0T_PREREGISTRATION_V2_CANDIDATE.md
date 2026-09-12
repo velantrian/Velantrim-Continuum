@@ -116,7 +116,7 @@ Do **not** construct an Evidence partition from these until another bounded revi
 | 2 | Fixture set | **PARTIAL** | Two hashed PILOT_ONLY fixtures; EVIDENCE empty | Owner accept; candidates not in set |
 | 3 | Queries | **PARTIAL** | PILOT gold + D8 lock | Candidate probes not frozen |
 | 4 | Equivalence | **PARTIAL** | Byte-identical current; fold(thin) = current | Shared evaluator outside this script |
-| 5 | Reader / model | **FROZEN_CANDIDATE** | `docs/research/CONT_E0T_FIELD5_READER_CONTRACT.md`; `deepseek-flash`; thinking disabled; prompt SHA `96640091…878a349` | Alias mutable; seed UNSUPPORTED |
+| 5 | Reader / model | **SOURCE_CONFLICT** | Identity verification `docs/research/CONT_E0T_FIELD5_IDENTITY_VERIFICATION.md`. Wrapper pins unchanged. | Official sources disagree on id / version / Pro remap |
 | 6 | Rubric | **PARTIAL** | HARD FAIL atoms; no NetValue | Match spec |
 | 7 | Reviewers | **PARTIAL** | Arm-blind outputs | Roster |
 | 8 | Cost | **PARTIAL** | Report transitions/bytes/tokens separately; no gain-per-token | Tokenizer (Field 5) |
@@ -137,7 +137,7 @@ D8                       = FX01-S1 clock not on T1
 FX-01/FX-02              = PILOT_ONLY
 EVIDENCE                 = []
 FROZEN_FIELDS            = 0 / 10
-FIELD_5                  = FROZEN_CANDIDATE
+FIELD_5                  = SOURCE_CONFLICT
 FINAL_PREREG_REVIEW      = NOT_READY
 EXPERIMENT_AUTHORIZATION = NOT_AUTHORIZED
 ```

@@ -1,6 +1,7 @@
 # CONT-E0T Field 5 — Reader contract (candidate)
 
-**Status:** `FIELD_5 = FROZEN_CANDIDATE`  
+**Status:** `FIELD_5 = SOURCE_CONFLICT`  
+**Identity:** `FIELD_5_MODEL_IDENTITY = SOURCE_CONFLICT` — see `docs/research/CONT_E0T_FIELD5_IDENTITY_VERIFICATION.md`  
 **Not:** experiment GO. Not a model run. Not Evidence. Not architecture.  
 **Parent science SHA:** `bc48a15148d6b7d2f1a9863214cf8a5c734ae10d`  
 **This branch:** `research/cont-e0t-prereg-v22`  
@@ -158,7 +159,7 @@ No prior messages. No Labs transcript. No project files except the bytes above.
 | 2 | Fixture set | **PARTIAL** (CAND-03/04 candidates; EVIDENCE empty; PILOT_ONLY FX-01/02) |
 | 3 | Queries | **PARTIAL** |
 | 4 | Equivalence | **PARTIAL** |
-| 5 | Reader / model freeze | **FROZEN_CANDIDATE** (this file) — alias mutable |
+| 5 | Reader / model freeze | **SOURCE_CONFLICT** — identity report |
 | 6 | Semantic rubric | **PARTIAL** |
 | 7 | Reviewer procedure | **PARTIAL** |
 | 8 | Complexity / cost | **PARTIAL** |
@@ -168,7 +169,8 @@ No prior messages. No Labs transcript. No project files except the bytes above.
 **FROZEN science fields: 0 / 10.** Field 5 is a candidate contract, not a 10-field freeze.
 
 ```text
-FIELD_5                    = FROZEN_CANDIDATE
+FIELD_5                    = SOURCE_CONFLICT
+FIELD_5_MODEL_IDENTITY     = SOURCE_CONFLICT
 FINAL_PREREG_REVIEW        = NOT_READY
 EXPERIMENT_AUTHORIZATION   = NOT_AUTHORIZED
 ```
