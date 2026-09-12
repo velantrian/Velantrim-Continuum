@@ -13,3 +13,5 @@
 - Do **not** promote to Evidence
 
 See `T1_LIST_ORDER.md`: T1 list order is non-temporal / non-semantic.
+
+**Partition:** `DEVELOPMENT_DESIGN`. Do **not** promote CAND-03/CAND-04 to confirmatory Evidence. Future Evidence must be new objects after `CONT_E0T_PRE_EVIDENCE_RULES.md`.

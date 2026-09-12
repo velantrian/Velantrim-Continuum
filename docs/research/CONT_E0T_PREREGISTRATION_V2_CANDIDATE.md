@@ -117,11 +117,11 @@ Do **not** construct an Evidence partition from these until another bounded revi
 | 3 | Queries | **PARTIAL** | PILOT gold + D8 lock | Candidate probes not frozen |
 | 4 | Equivalence | **PARTIAL** | Byte-identical current; fold(thin) = current | Shared evaluator outside this script |
 | 5 | Reader / model | **FROZEN_CANDIDATE** | `deepseek-flash` = DeepSeek-V4.1-Flash; identity cleared; wrapper pins unchanged | Weights not immutably pinned; alias mutable |
-| 6 | Rubric | **PARTIAL** | HARD FAIL atoms; no NetValue | Match spec |
-| 7 | Reviewers | **PARTIAL** | Arm-blind outputs | Roster |
-| 8 | Cost | **PARTIAL** | Report transitions/bytes/tokens separately; no gain-per-token | Tokenizer (Field 5) |
-| 9 | Envelope | **PARTIAL** | `n_transitions_max`; no pad; no token-equality | Matching still unjustified |
-| 10 | Absolute adequacy | **PARTIAL** | HARD FAIL + per-fixture bindings | Owner accept of atoms |
+| 6 | Rubric | **FROZEN_CANDIDATE** | PRIMARY PASS/PARTIAL/FAIL; HARD FAIL separate; no lexical-only | See `CONT_E0T_PRE_EVIDENCE_RULES.md` |
+| 7 | Reviewers | **FROZEN_CANDIDATE** | Arm-blind X/Y; A/B + adjudicator; fail-closed | `ROSTER_PERSONS_UNFILLED` |
+| 8 | Cost | **FROZEN_CANDIDATE** | usage tokens, bytes, n_transitions, latency optional | No gain-per-token |
+| 9 | Envelope | **FROZEN_CANDIDATE** | n∈[2,4]; ID_REFS_ONLY; no pad/provenance; id-sort T1 | |
+| 10 | Absolute adequacy | **FROZEN_CANDIDATE** | PASS ∧ no HF; both-inadequate excluded | Tie = both adequate |
 
 **FROZEN science fields: 0 / 10.**
 
