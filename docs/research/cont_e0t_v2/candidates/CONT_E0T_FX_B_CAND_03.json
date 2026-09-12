@@ -1,0 +1,301 @@
+{
+  "fixture_id": "CONT-E0T-FX-B-CAND-03",
+  "title": "Compose hold-class + channel-type + precedence + UNKNOWN",
+  "partition": "CANDIDATE_NOT_EVIDENCE",
+  "claim_b_role": "PROPOSED_DISCRIMINATOR",
+  "authorship": "EXPERIMENTER_AUTHORED",
+  "copied_from_e0t_transfer": false,
+  "claim_under_test": "B",
+  "primary_solvable_from_T1_required": true,
+  "thin_trajectory_form": "ID_REFS_ONLY",
+  "current_semantics": {
+    "active_goal": "Assemble the weekly ops digest",
+    "task_position": "Section 3 of 5 in progress",
+    "constraints": [
+      {
+        "id": "c-fmt",
+        "text": "Use the internal template",
+        "current": true
+      },
+      {
+        "id": "c-mail-ok",
+        "text": "Internal draft copies may be emailed",
+        "current": true
+      },
+      {
+        "id": "c-hold-elm",
+        "text": "HOLD-elm applies to Slack posts",
+        "current": true
+      },
+      {
+        "id": "c-hold-ash",
+        "text": "HOLD-ash applies to all outbound communications",
+        "current": true
+      },
+      {
+        "id": "c-len",
+        "text": "Keep the digest under 800 words",
+        "current": true
+      },
+      {
+        "id": "c-ops-list",
+        "text": "The ops list is an email channel",
+        "current": true
+      },
+      {
+        "id": "c-prec",
+        "text": "A hold on a communication class outranks a permission on a member of that class",
+        "current": true
+      },
+      {
+        "id": "c-email-outbound",
+        "text": "Email is an outbound communication",
+        "current": true
+      },
+      {
+        "id": "c-hold-oak",
+        "text": "HOLD-oak applies to public blog posts",
+        "current": true
+      },
+      {
+        "id": "c-src",
+        "text": "Cite only approved internal sources",
+        "current": true
+      }
+    ],
+    "accepted_decisions": [
+      {
+        "id": "d-pack",
+        "text": "The weekly ops digest is an internal work product",
+        "current": true
+      },
+      {
+        "id": "d-template",
+        "text": "Internal template selected",
+        "current": true
+      }
+    ],
+    "rejected_alternatives": [
+      {
+        "id": "r-ext-tool",
+        "text": "Third-party mail merge",
+        "current": true
+      },
+      {
+        "id": "r-sms",
+        "text": "SMS blast to on-call phones",
+        "current": true
+      }
+    ],
+    "unresolved_items": [
+      {
+        "id": "u-elm",
+        "text": "HOLD-elm clearance is UNKNOWN",
+        "current": true
+      },
+      {
+        "id": "u-oak",
+        "text": "HOLD-oak clearance is UNKNOWN",
+        "current": true
+      },
+      {
+        "id": "u-ash",
+        "text": "HOLD-ash clearance is UNKNOWN",
+        "current": true
+      }
+    ],
+    "contested_claims": [
+      {
+        "id": "k-alias",
+        "text": "Whether 'ops-digest-all' equals the ops list is contested",
+        "current": true
+      }
+    ],
+    "current_rationale": "Keep channel facts, class facts, precedence, and ticket status separate. Do not invent ticket clearance.",
+    "unknown_operations": [
+      {
+        "id": "op-elm",
+        "text": "HOLD-elm clearance check",
+        "current": true,
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "op-oak",
+        "text": "HOLD-oak clearance check",
+        "current": true,
+        "status": "UNKNOWN"
+      },
+      {
+        "id": "op-ash",
+        "text": "HOLD-ash clearance check",
+        "current": true,
+        "status": "UNKNOWN"
+      }
+    ],
+    "artifact_refs": [
+      {
+        "id": "art-digest",
+        "text": "weekly-ops-digest outline",
+        "current": true
+      }
+    ],
+    "process_position": "Section 3 of 5; no channel action is named here"
+  },
+  "thin_trajectory": [
+    {
+      "seq": 1,
+      "changes": [
+        {
+          "op": "ADD",
+          "field": "constraints",
+          "id": "c-fmt"
+        },
+        {
+          "op": "ADD",
+          "field": "constraints",
+          "id": "c-mail-ok"
+        },
+        {
+          "op": "ADD",
+          "field": "constraints",
+          "id": "c-hold-elm"
+        },
+        {
+          "op": "ADD",
+          "field": "constraints",
+          "id": "c-len"
+        },
+        {
+          "op": "ADD",
+          "field": "constraints",
+          "id": "c-ops-list"
+        },
+        {
+          "op": "ADD",
+          "field": "constraints",
+          "id": "c-prec"
+        },
+        {
+          "op": "ADD",
+          "field": "constraints",
+          "id": "c-email-outbound"
+        },
+        {
+          "op": "ADD",
+          "field": "constraints",
+          "id": "c-hold-oak"
+        },
+        {
+          "op": "ADD",
+          "field": "constraints",
+          "id": "c-src"
+        },
+        {
+          "op": "ADD",
+          "field": "accepted_decisions",
+          "id": "d-pack"
+        },
+        {
+          "op": "ADD",
+          "field": "accepted_decisions",
+          "id": "d-template"
+        },
+        {
+          "op": "ADD",
+          "field": "rejected_alternatives",
+          "id": "r-ext-tool"
+        },
+        {
+          "op": "ADD",
+          "field": "rejected_alternatives",
+          "id": "r-sms"
+        },
+        {
+          "op": "ADD",
+          "field": "unresolved_items",
+          "id": "u-elm"
+        },
+        {
+          "op": "ADD",
+          "field": "unresolved_items",
+          "id": "u-oak"
+        },
+        {
+          "op": "ADD",
+          "field": "unknown_operations",
+          "id": "op-elm"
+        },
+        {
+          "op": "ADD",
+          "field": "unknown_operations",
+          "id": "op-oak"
+        },
+        {
+          "op": "ADD",
+          "field": "artifact_refs",
+          "id": "art-digest"
+        }
+      ]
+    },
+    {
+      "seq": 2,
+      "changes": [
+        {
+          "op": "ADD",
+          "field": "constraints",
+          "id": "c-hold-ash"
+        },
+        {
+          "op": "ADD",
+          "field": "unresolved_items",
+          "id": "u-ash"
+        },
+        {
+          "op": "ADD",
+          "field": "unknown_operations",
+          "id": "op-ash"
+        }
+      ]
+    }
+  ],
+  "composition_keys_for_primary": [
+    "d-pack",
+    "c-ops-list",
+    "c-email-outbound",
+    "c-hold-ash",
+    "c-prec",
+    "u-ash",
+    "c-mail-ok"
+  ],
+  "probes": [
+    {
+      "probe_id": "C3-P1",
+      "tag": "PRIMARY_RESUME",
+      "primary_solvable_from_T1": true,
+      "wording": "May the current draft be sent to the ops list now?",
+      "gold": "No. Compose: the digest is internal (d-pack); the ops list is email (c-ops-list); email is outbound (c-email-outbound); HOLD-ash applies to outbound (c-hold-ash); class hold outranks member permission (c-prec) so c-mail-ok does not win; HOLD-ash clearance is UNKNOWN (u-ash).",
+      "resume_atoms": [
+        "constraint_preservation",
+        "honest_UNKNOWN",
+        "no_fabricated_authorization"
+      ],
+      "must_compose": [
+        "d-pack",
+        "c-ops-list",
+        "c-email-outbound",
+        "c-hold-ash",
+        "c-prec",
+        "u-ash"
+      ]
+    },
+    {
+      "probe_id": "C3-S1",
+      "tag": "SECONDARY_HISTORY",
+      "primary_solvable_from_T1": false,
+      "wording": "Which hold id became current after internal-email permission was already current?",
+      "gold": "c-hold-ash.",
+      "resume_atoms": [],
+      "why_not_on_T1": "T1 has c-hold-ash, c-hold-elm, and c-hold-oak all current. List order is elm, ash, oak (ash is middle). IDs do not encode time. Only seq2 of thin_trajectory marks ash as later."
+    }
+  ]
+}

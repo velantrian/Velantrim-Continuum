@@ -1,11 +1,13 @@
-# Claim B fixture candidates (not Evidence, not PILOT package)
+# Claim B fixture candidates (not Evidence, not PILOT)
 
-These files are **proposals** after the v2.2 correction pass.
+| ID | Status |
+|----|--------|
+| CONT-E0T-FX-B-CAND-01 | SUPERSEDED (ceiling / seq1 replay) |
+| CONT-E0T-FX-B-CAND-02 | SUPERSEDED (ceiling / list-order leak) |
+| CONT-E0T-FX-B-CAND-03 | ACTIVE discriminator candidate |
+| CONT-E0T-FX-B-CAND-04 | ACTIVE discriminator candidate |
 
-- Not listed in `fixtures/manifest.json`
-- Not part of `validate_cont_e0t_v2_package.py` PILOT set
+- Not in `fixtures/manifest.json`
 - `partition: CANDIDATE_NOT_EVIDENCE`
-- Do **not** promote to Evidence until the corrected protocol survives another bounded review
-
-They keep PRIMARY solvable from CONT-T1 and try to reduce the PILOT ceiling
-(`process_position` does not restate the gold).
+- `thin_trajectory_form: ID_REFS_ONLY` — no current-state `to` text
+- Do **not** promote to Evidence
