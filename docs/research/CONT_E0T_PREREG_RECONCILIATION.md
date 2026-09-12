@@ -11,7 +11,7 @@ Sealed inputs (do not rewrite):
 |------|----------|--------|
 | CONT-AUTHOR | `docs/research/CONT_E0T_PREREGISTRATION_CANDIDATE.md` | `4a026c1ef7844cc95873d6155b311c2853346fe8` |
 | CONT-REDTEAM | `docs/research/CONT_E0T_BLIND_REDTEAM_REVIEW.md` | `1069ee39c8ad53251964ebd00c6ee3dfbdf21bac` |
-| CONT-INTEGRITY | `docs/research/CONT_E0T_INTEGRITY_REPORT.md` | *pending at write time; Labs process checks below* |
+| CONT-INTEGRITY | `docs/research/CONT_E0T_INTEGRITY_REPORT.md` | `35d935e78fd87a584a73fd520d09f9b2465d8ad0` |
 
 ```text
 MODEL OUTPUT ≠ STATE AUTHORITY
@@ -124,7 +124,7 @@ If any of A–E cannot be established: **NOT_READY.**
 
 ---
 
-## 6. Labs process integrity (pending formal Integrity report)
+## 6. Labs process integrity
 
 Verified by Labs before this file:
 
@@ -135,7 +135,16 @@ Verified by Labs before this file:
 - No experiment / paid model run observed in these worktrees
 - Procedural blindness: shared computer; no Author file in RedTeam tree
 
-Formal `CONT_E0T_INTEGRITY_REPORT.md` SHA was **pending** when this reconciliation was first written. If a later Integrity commit exists, record it in the Labs final report without editing the sealed Author/RedTeam commits.
+Formal Integrity report sealed after this file’s first commit (`6cfe219d5410e67f17878a60225e421f52f2331a`):
+
+- SHA: `35d935e78fd87a584a73fd520d09f9b2465d8ad0`
+- Parent: `78a73edf02cfa7e91fe6745b0f925fd5e0e05bc5`
+- Branch: `research/cont-e0t-integrity`
+- Verdict: **INTEGRITY: PASS** (process / state only)
+- Names Author `4a026c1ef7844cc95873d6155b311c2853346fe8` and RedTeam `1069ee39c8ad53251964ebd00c6ee3dfbdf21bac`
+- Docs-only one-file add; sealed Author/RedTeam not rewritten
+
+Integrity PASS does **not** freeze science fields and does **not** authorize the experiment.
 
 ---
 
