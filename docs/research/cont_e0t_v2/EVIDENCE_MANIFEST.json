@@ -1,0 +1,70 @@
+{
+  "package": "CONT-E0T-V22-EVIDENCE",
+  "protocol_revision": "v2.2-final-prereg-candidate",
+  "claim_under_test": "B",
+  "status": "EVIDENCE_MANIFEST_FROZEN",
+  "copied_from_e0t_transfer": false,
+  "partition": {
+    "EVIDENCE": [
+      "CONT-E0T-EVID-01",
+      "CONT-E0T-EVID-02",
+      "CONT-E0T-EVID-03",
+      "CONT-E0T-EVID-04"
+    ],
+    "PILOT": [
+      "CONT-E0T-FX-01",
+      "CONT-E0T-FX-02"
+    ]
+  },
+  "note": "PILOT fixtures/manifest.json EVIDENCE remains [] so the PILOT validator stays fail-closed. This file is the confirmatory Evidence freeze.",
+  "reader_prompt_file": "docs/research/cont_e0t_v2/reader_prompt_field5.txt",
+  "reader_prompt_sha256": "966400916b79e7025ed22c325e7d858e08ff2e89c0cc024606d7eb429878a349",
+  "run_order_file": "docs/research/cont_e0t_v2/RUN_ORDER_SCHEDULE.json",
+  "run_order_sha256": "4ed48f6c793d1fc0fa1f6ae0311f541ef4422dfdd0c81fcadf81a41f2cbf82bd",
+  "fixtures": [
+    {
+      "slot": "EVID-01",
+      "fixture_id": "CONT-E0T-EVID-01",
+      "family": "FAM-HOLD-CLASS",
+      "file": "evidence_candidates/EVID-01.json",
+      "file_sha256": "72585647e0edcacbd03bd42d7ad49f406a7ef0e9201fb5b444e3cedf23380227",
+      "n_transitions": 2,
+      "n_transitions_max": 4,
+      "partition_in_file": "EVIDENCE_CANDIDATE_UNSEALED",
+      "promoted_as": "EVIDENCE"
+    },
+    {
+      "slot": "EVID-02",
+      "fixture_id": "CONT-E0T-EVID-02",
+      "family": "FAM-MEMBER-CHANNEL",
+      "file": "evidence_candidates/EVID-02.json",
+      "file_sha256": "f41976dc3c7e8bf20d926e84e04e89789312055dd7b2e117be1fbe3251bab1c6",
+      "n_transitions": 2,
+      "n_transitions_max": 4,
+      "partition_in_file": "EVIDENCE_CANDIDATE_UNSEALED",
+      "promoted_as": "EVIDENCE"
+    },
+    {
+      "slot": "EVID-03",
+      "fixture_id": "CONT-E0T-EVID-03",
+      "family": "FAM-HOLD-CLASS",
+      "file": "evidence_candidates/EVID-03.json",
+      "file_sha256": "e2d1416938bd3016929e4c12cfd9c51b1d3d7f7c93ec1e3091361d6adf8d1621",
+      "n_transitions": 2,
+      "n_transitions_max": 4,
+      "partition_in_file": "EVIDENCE_CANDIDATE_UNSEALED",
+      "promoted_as": "EVIDENCE"
+    },
+    {
+      "slot": "EVID-04",
+      "fixture_id": "CONT-E0T-EVID-04",
+      "family": "FAM-MEMBER-CHANNEL",
+      "file": "evidence_candidates/EVID-04.json",
+      "file_sha256": "bf49323db90a21ad7884ba20564f0506f9a274348c8414f7344e17fc6042c8f0",
+      "n_transitions": 2,
+      "n_transitions_max": 4,
+      "partition_in_file": "EVIDENCE_CANDIDATE_UNSEALED",
+      "promoted_as": "EVIDENCE"
+    }
+  ]
+}
