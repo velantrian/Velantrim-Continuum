@@ -1,5 +1,6 @@
 {
-  "package": "CONT-E0T-V2-PILOT-FIXTURES",
+  "package": "CONT-E0T-V22-PILOT-FIXTURES",
+  "protocol_revision": "v2.2",
   "claim_under_test": "B",
   "partition": {
     "PILOT": [
@@ -10,30 +11,34 @@
   },
   "copied_from_e0t_transfer": false,
   "reader_prompt_file": "reader_prompt_v2.txt",
-  "reader_prompt_sha256": "73668419a2135e293ef3902a7a974012454ace61cc16ca14fa858f741bfb5db3",
+  "reader_prompt_sha256": "5d3e946be3c0830a37575c59aa24636b2952a83384cb8ce813e604bb2362a067",
+  "claim_b_reader_rule": "CONT-T1=current_semantics only; CONT-T2=current_semantics+thin_trajectory. provenance_validator_only and audit_snapshots_validator_only are not reader treatments.",
   "fixtures": [
     {
       "fixture_id": "CONT-E0T-FX-01",
       "file": "CONT_E0T_FX_01.json",
-      "file_sha256": "48be07139b3106a4701e38417b31557fb833b703df2aafc5700a0cfa422dd07d",
-      "canonical_json_sha256": "fb586883be8bd692e251f5884c76112409742e56923d4e5486fca150baeb9406",
+      "file_sha256": "e552d5a883d9c8a433254a6379e84ef9bdd78ed3a7fe40ea882e251215802ce9",
+      "canonical_json_sha256": "15ce74bd9adb0bbef74ab3db48b1118e1fc521387e4029549425babf8e60ae7d",
       "partition": "PILOT",
       "n_transitions": 3,
-      "n_transitions_max": 4
+      "n_transitions_max": 4,
+      "claim_b_role": "PILOT_SHAKEDOWN_NOT_DISCRIMINATOR"
     },
     {
       "fixture_id": "CONT-E0T-FX-02",
       "file": "CONT_E0T_FX_02.json",
-      "file_sha256": "cdbe362463a077972932a8feba1f753c214b3abfd57269717ca205def890f340",
-      "canonical_json_sha256": "24ccaf1fbd4c0bf59b28bfab543d704f9d79c28a5fe9d768a567dcb5f337ddf6",
+      "file_sha256": "e993f2dfa1d1bdc9a5af800dc2c6dfbb119684b8c26563af7e9e137bf82984b8",
+      "canonical_json_sha256": "8824a062a840b19d630ca7528cb7beac6b7a39bc8c415400618115963615d3c0",
       "partition": "PILOT",
       "n_transitions": 3,
-      "n_transitions_max": 4
+      "n_transitions_max": 4,
+      "claim_b_role": "PILOT_SHAKEDOWN_NOT_DISCRIMINATOR"
     }
   ],
   "notes": [
     "Hashes are of the files as committed. Re-run validate_cont_e0t_v2_package.py after any edit.",
-    "EVIDENCE partition is empty. PILOT is not Evidence Lock.",
-    "Field 5 model identity is not in this package."
+    "EVIDENCE partition is empty. PILOT is not Evidence Lock and not a Claim B discriminator set.",
+    "Field 5 model identity is not in this package.",
+    "Validator stdout PACKAGE_STRUCTURAL_PASS is not science."
   ]
 }

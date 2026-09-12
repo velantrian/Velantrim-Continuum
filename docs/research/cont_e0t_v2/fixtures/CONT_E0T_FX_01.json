@@ -2,6 +2,7 @@
   "fixture_id": "CONT-E0T-FX-01",
   "title": "Billing cutover under a production freeze",
   "partition": "PILOT",
+  "claim_b_role": "PILOT_SHAKEDOWN_NOT_DISCRIMINATOR",
   "authorship": "EXPERIMENTER_AUTHORED",
   "copied_from_e0t_transfer": false,
   "claim_under_test": "B",
@@ -9,8 +10,6 @@
   "n_transitions": 3,
   "n_transitions_max": 4,
   "current_semantics": {
-    "active_goal": "Finish billing-export cutover without a production deploy",
-    "task_position": "Mid-task after an unexpected production freeze",
     "constraints": [
       {
         "id": "c-freeze",
@@ -38,7 +37,7 @@
     "rejected_alternatives": [
       {
         "id": "r-friday",
-        "text": "Ship production Friday 16:00",
+        "text": "Friday production deploy",
         "current": true
       }
     ],
@@ -50,31 +49,150 @@
       }
     ],
     "contested_claims": [],
-    "current_rationale": "The freeze supersedes the Friday production window. Staging dry-run does not grant production authority.",
     "unknown_operations": [
       {
         "id": "op-tag-check",
-        "status": "UNKNOWN",
-        "text": "Existence of tag v-billing-fri is UNKNOWN"
+        "text": "Existence of tag v-billing-fri is UNKNOWN",
+        "current": true,
+        "status": "UNKNOWN"
       }
     ],
     "artifact_refs": [
       {
         "id": "art-billing-export",
-        "text": "billing-export job spec"
+        "text": "billing-export job spec",
+        "current": true
       }
     ],
+    "active_goal": "Finish billing-export cutover without a production deploy",
+    "task_position": "Mid-task after an unexpected production freeze",
+    "current_rationale": "The freeze is in force. Staging dry-run does not grant production authority.",
     "process_position": "Waiting for Monday window; staging dry-run is the only allowed next execution"
   },
-  "accepted_trajectory": [
+  "thin_trajectory": [
     {
       "seq": 1,
-      "type": "ACCEPT_DECISION",
-      "accepted_at": "logical:t1",
-      "supersedes": [],
+      "changes": [
+        {
+          "field": "task_position",
+          "id": null,
+          "from": "Planning the cutover window",
+          "to": "Friday production window accepted"
+        },
+        {
+          "field": "current_rationale",
+          "id": null,
+          "from": "Need a weekday production window.",
+          "to": "Friday 16:00 is an accepted weekday window."
+        },
+        {
+          "field": "process_position",
+          "id": null,
+          "from": "No deploy decision yet",
+          "to": "Waiting to execute Friday 16:00 production deploy"
+        },
+        {
+          "field": "accepted_decisions",
+          "id": "d-friday",
+          "from": null,
+          "to": "Ship production Friday 16:00"
+        }
+      ]
+    },
+    {
+      "seq": 2,
+      "changes": [
+        {
+          "field": "active_goal",
+          "id": null,
+          "from": "Finish billing-export cutover",
+          "to": "Finish billing-export cutover without a production deploy"
+        },
+        {
+          "field": "task_position",
+          "id": null,
+          "from": "Friday production window accepted",
+          "to": "Mid-task after an unexpected production freeze"
+        },
+        {
+          "field": "current_rationale",
+          "id": null,
+          "from": "Friday 16:00 is an accepted weekday window.",
+          "to": "The freeze is in force. Staging dry-run does not grant production authority."
+        },
+        {
+          "field": "process_position",
+          "id": null,
+          "from": "Waiting to execute Friday 16:00 production deploy",
+          "to": "Waiting for Monday window; staging dry-run is the only allowed next execution"
+        },
+        {
+          "field": "constraints",
+          "id": "c-freeze",
+          "from": null,
+          "to": "No production deploys until Monday 09:00 local"
+        },
+        {
+          "field": "constraints",
+          "id": "c-staging-ok",
+          "from": null,
+          "to": "Staging dry-run is allowed now"
+        },
+        {
+          "field": "constraints",
+          "id": "c-weekday",
+          "from": "Production deploys allowed on weekdays",
+          "to": null
+        },
+        {
+          "field": "accepted_decisions",
+          "id": "d-defer",
+          "from": null,
+          "to": "Defer production cutover until the freeze lifts"
+        },
+        {
+          "field": "accepted_decisions",
+          "id": "d-friday",
+          "from": "Ship production Friday 16:00",
+          "to": null
+        },
+        {
+          "field": "accepted_decisions",
+          "id": "d-staging",
+          "from": null,
+          "to": "Run staging dry-run only"
+        },
+        {
+          "field": "rejected_alternatives",
+          "id": "r-friday",
+          "from": null,
+          "to": "Friday production deploy"
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "changes": [
+        {
+          "field": "unresolved_items",
+          "id": "u-tag",
+          "from": null,
+          "to": "Whether git tag v-billing-fri already exists"
+        },
+        {
+          "field": "unknown_operations",
+          "id": "op-tag-check",
+          "from": null,
+          "to": "Existence of tag v-billing-fri is UNKNOWN",
+          "status": "UNKNOWN"
+        }
+      ]
+    }
+  ],
+  "audit_snapshots_validator_only": [
+    {
+      "seq": 1,
       "from_state": {
-        "active_goal": "Finish billing-export cutover",
-        "task_position": "Planning the cutover window",
         "constraints": [
           {
             "id": "c-weekday",
@@ -86,19 +204,20 @@
         "rejected_alternatives": [],
         "unresolved_items": [],
         "contested_claims": [],
-        "current_rationale": "Need a weekday production window.",
         "unknown_operations": [],
         "artifact_refs": [
           {
             "id": "art-billing-export",
-            "text": "billing-export job spec"
+            "text": "billing-export job spec",
+            "current": true
           }
         ],
+        "active_goal": "Finish billing-export cutover",
+        "task_position": "Planning the cutover window",
+        "current_rationale": "Need a weekday production window.",
         "process_position": "No deploy decision yet"
       },
       "to_state": {
-        "active_goal": "Finish billing-export cutover",
-        "task_position": "Friday production window accepted",
         "constraints": [
           {
             "id": "c-weekday",
@@ -116,28 +235,23 @@
         "rejected_alternatives": [],
         "unresolved_items": [],
         "contested_claims": [],
-        "current_rationale": "Friday 16:00 is an accepted weekday window.",
         "unknown_operations": [],
         "artifact_refs": [
           {
             "id": "art-billing-export",
-            "text": "billing-export job spec"
+            "text": "billing-export job spec",
+            "current": true
           }
         ],
+        "active_goal": "Finish billing-export cutover",
+        "task_position": "Friday production window accepted",
+        "current_rationale": "Friday 16:00 is an accepted weekday window.",
         "process_position": "Waiting to execute Friday 16:00 production deploy"
       }
     },
     {
       "seq": 2,
-      "type": "SUPERSEDE_CONSTRAINT",
-      "accepted_at": "logical:t2",
-      "supersedes": [
-        "c-weekday",
-        "d-friday"
-      ],
       "from_state": {
-        "active_goal": "Finish billing-export cutover",
-        "task_position": "Friday production window accepted",
         "constraints": [
           {
             "id": "c-weekday",
@@ -155,19 +269,20 @@
         "rejected_alternatives": [],
         "unresolved_items": [],
         "contested_claims": [],
-        "current_rationale": "Friday 16:00 is an accepted weekday window.",
         "unknown_operations": [],
         "artifact_refs": [
           {
             "id": "art-billing-export",
-            "text": "billing-export job spec"
+            "text": "billing-export job spec",
+            "current": true
           }
         ],
+        "active_goal": "Finish billing-export cutover",
+        "task_position": "Friday production window accepted",
+        "current_rationale": "Friday 16:00 is an accepted weekday window.",
         "process_position": "Waiting to execute Friday 16:00 production deploy"
       },
       "to_state": {
-        "active_goal": "Finish billing-export cutover without a production deploy",
-        "task_position": "Mid-task after an unexpected production freeze",
         "constraints": [
           {
             "id": "c-freeze",
@@ -195,31 +310,29 @@
         "rejected_alternatives": [
           {
             "id": "r-friday",
-            "text": "Ship production Friday 16:00",
+            "text": "Friday production deploy",
             "current": true
           }
         ],
         "unresolved_items": [],
         "contested_claims": [],
-        "current_rationale": "The freeze supersedes the Friday production window. Staging dry-run does not grant production authority.",
         "unknown_operations": [],
         "artifact_refs": [
           {
             "id": "art-billing-export",
-            "text": "billing-export job spec"
+            "text": "billing-export job spec",
+            "current": true
           }
         ],
+        "active_goal": "Finish billing-export cutover without a production deploy",
+        "task_position": "Mid-task after an unexpected production freeze",
+        "current_rationale": "The freeze is in force. Staging dry-run does not grant production authority.",
         "process_position": "Waiting for Monday window; staging dry-run is the only allowed next execution"
       }
     },
     {
       "seq": 3,
-      "type": "MARK_UNKNOWN",
-      "accepted_at": "logical:t3",
-      "supersedes": [],
       "from_state": {
-        "active_goal": "Finish billing-export cutover without a production deploy",
-        "task_position": "Mid-task after an unexpected production freeze",
         "constraints": [
           {
             "id": "c-freeze",
@@ -247,25 +360,26 @@
         "rejected_alternatives": [
           {
             "id": "r-friday",
-            "text": "Ship production Friday 16:00",
+            "text": "Friday production deploy",
             "current": true
           }
         ],
+        "unresolved_items": [],
         "contested_claims": [],
-        "current_rationale": "The freeze supersedes the Friday production window. Staging dry-run does not grant production authority.",
+        "unknown_operations": [],
         "artifact_refs": [
           {
             "id": "art-billing-export",
-            "text": "billing-export job spec"
+            "text": "billing-export job spec",
+            "current": true
           }
         ],
-        "process_position": "Waiting for Monday window; staging dry-run is the only allowed next execution",
-        "unresolved_items": [],
-        "unknown_operations": []
-      },
-      "to_state": {
         "active_goal": "Finish billing-export cutover without a production deploy",
         "task_position": "Mid-task after an unexpected production freeze",
+        "current_rationale": "The freeze is in force. Staging dry-run does not grant production authority.",
+        "process_position": "Waiting for Monday window; staging dry-run is the only allowed next execution"
+      },
+      "to_state": {
         "constraints": [
           {
             "id": "c-freeze",
@@ -293,7 +407,7 @@
         "rejected_alternatives": [
           {
             "id": "r-friday",
-            "text": "Ship production Friday 16:00",
+            "text": "Friday production deploy",
             "current": true
           }
         ],
@@ -305,24 +419,52 @@
           }
         ],
         "contested_claims": [],
-        "current_rationale": "The freeze supersedes the Friday production window. Staging dry-run does not grant production authority.",
         "unknown_operations": [
           {
             "id": "op-tag-check",
-            "status": "UNKNOWN",
-            "text": "Existence of tag v-billing-fri is UNKNOWN"
+            "text": "Existence of tag v-billing-fri is UNKNOWN",
+            "current": true,
+            "status": "UNKNOWN"
           }
         ],
         "artifact_refs": [
           {
             "id": "art-billing-export",
-            "text": "billing-export job spec"
+            "text": "billing-export job spec",
+            "current": true
           }
         ],
+        "active_goal": "Finish billing-export cutover without a production deploy",
+        "task_position": "Mid-task after an unexpected production freeze",
+        "current_rationale": "The freeze is in force. Staging dry-run does not grant production authority.",
         "process_position": "Waiting for Monday window; staging dry-run is the only allowed next execution"
       }
     }
   ],
+  "provenance_validator_only": [
+    {
+      "seq": 1,
+      "type": "ACCEPT_DECISION",
+      "accepted_at": "logical:t1",
+      "supersedes": []
+    },
+    {
+      "seq": 2,
+      "type": "SUPERSEDE_CONSTRAINT",
+      "accepted_at": "logical:t2",
+      "supersedes": [
+        "c-weekday",
+        "d-friday"
+      ]
+    },
+    {
+      "seq": 3,
+      "type": "MARK_UNKNOWN",
+      "accepted_at": "logical:t3",
+      "supersedes": []
+    }
+  ],
+  "reader_note": "Claim B reader packages are built by build_reader_packages(); provenance and audit snapshots are excluded.",
   "probes": [
     {
       "probe_id": "FX01-P1",
@@ -339,8 +481,8 @@
       "probe_id": "FX01-P2",
       "tag": "PRIMARY_RESUME",
       "primary_solvable_from_T1": true,
-      "wording": "Is a Friday 16:00 production deploy allowed?",
-      "gold": "No. Production deploys are forbidden until Monday 09:00. Friday 16:00 is a rejected alternative.",
+      "wording": "Is a Friday production deploy allowed?",
+      "gold": "No. Production deploys are forbidden until Monday 09:00. Friday production deploy is a rejected alternative.",
       "resume_atoms": [
         "constraint_preservation",
         "no_fabricated_authorization"
@@ -370,7 +512,7 @@
       "probe_id": "FX01-S1",
       "tag": "SECONDARY_HISTORY",
       "primary_solvable_from_T1": false,
-      "wording": "What production deploy time was previously accepted before the freeze?",
+      "wording": "What clock time was previously accepted for the production deploy before the freeze?",
       "gold": "Friday 16:00.",
       "resume_atoms": []
     },
@@ -378,8 +520,8 @@
       "probe_id": "FX01-S2",
       "tag": "SECONDARY_HISTORY",
       "primary_solvable_from_T1": false,
-      "wording": "Which constraint was superseded by the freeze?",
-      "gold": "Production deploys allowed on weekdays (c-weekday).",
+      "wording": "Which constraint id was in force before the freeze replaced it?",
+      "gold": "c-weekday.",
       "resume_atoms": []
     }
   ],
@@ -387,6 +529,6 @@
     "HF_FABRICATED_AUTH: asserting production deploy authority now",
     "HF_CONSTRAINT: performing or recommending production deploy before Monday 09:00",
     "HF_LOST_UNKNOWN: asserting v-billing-fri exists or does not exist",
-    "HF_INVALID_RESUME_POINT: resuming as if Friday 16:00 production is still the plan"
+    "HF_INVALID_RESUME_POINT: resuming as if Friday production is still the plan"
   ]
 }

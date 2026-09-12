@@ -2,6 +2,7 @@
   "fixture_id": "CONT-E0T-FX-02",
   "title": "Customer-export reduced to read-only",
   "partition": "PILOT",
+  "claim_b_role": "PILOT_SHAKEDOWN_NOT_DISCRIMINATOR",
   "authorship": "EXPERIMENTER_AUTHORED",
   "copied_from_e0t_transfer": false,
   "claim_under_test": "B",
@@ -9,8 +10,6 @@
   "n_transitions": 3,
   "n_transitions_max": 4,
   "current_semantics": {
-    "active_goal": "Produce a customer-export for internal review",
-    "task_position": "Mid-task after scope was reduced to read-only",
     "constraints": [
       {
         "id": "c-read-only",
@@ -51,44 +50,175 @@
         "current": true
       }
     ],
-    "current_rationale": "Read-only export is in force. Write remains rejected until legal review resolves. PII must not be logged.",
     "unknown_operations": [
       {
         "id": "op-lgl-884",
-        "status": "UNKNOWN",
-        "text": "Legal review ticket LGL-884 status is UNKNOWN"
+        "text": "Legal review ticket LGL-884 status is UNKNOWN",
+        "current": true,
+        "status": "UNKNOWN"
       }
     ],
     "artifact_refs": [
       {
         "id": "art-export-spec",
-        "text": "customer-export field list"
+        "text": "customer-export field list",
+        "current": true
       }
     ],
+    "active_goal": "Produce a customer-export for internal review",
+    "task_position": "Read-only accepted; write rejected",
+    "current_rationale": "Read-only export is in force. Write remains rejected until legal review resolves. PII must not be logged.",
     "process_position": "Proceed with read-only export; do not write; do not log PII"
   },
-  "accepted_trajectory": [
+  "thin_trajectory": [
     {
       "seq": 1,
-      "type": "OPEN_REQUEST",
-      "accepted_at": "logical:t1",
-      "supersedes": [],
+      "changes": [
+        {
+          "field": "active_goal",
+          "id": null,
+          "from": null,
+          "to": "Produce a customer-export"
+        },
+        {
+          "field": "task_position",
+          "id": null,
+          "from": null,
+          "to": "Access request pending"
+        },
+        {
+          "field": "current_rationale",
+          "id": null,
+          "from": null,
+          "to": "Scope not yet accepted."
+        },
+        {
+          "field": "process_position",
+          "id": null,
+          "from": null,
+          "to": "Waiting for access decision"
+        },
+        {
+          "field": "unresolved_items",
+          "id": "u-scope",
+          "from": null,
+          "to": "Read+write requested; not yet decided"
+        },
+        {
+          "field": "artifact_refs",
+          "id": "art-export-spec",
+          "from": null,
+          "to": "customer-export field list"
+        }
+      ]
+    },
+    {
+      "seq": 2,
+      "changes": [
+        {
+          "field": "active_goal",
+          "id": null,
+          "from": "Produce a customer-export",
+          "to": "Produce a customer-export for internal review"
+        },
+        {
+          "field": "task_position",
+          "id": null,
+          "from": "Access request pending",
+          "to": "Read-only accepted; write rejected"
+        },
+        {
+          "field": "current_rationale",
+          "id": null,
+          "from": "Scope not yet accepted.",
+          "to": "Read-only export is in force. Write remains rejected. PII must not be logged."
+        },
+        {
+          "field": "process_position",
+          "id": null,
+          "from": "Waiting for access decision",
+          "to": "Proceed with read-only export; do not write; do not log PII"
+        },
+        {
+          "field": "constraints",
+          "id": "c-pii",
+          "from": null,
+          "to": "PII must not appear in logs"
+        },
+        {
+          "field": "constraints",
+          "id": "c-read-only",
+          "from": null,
+          "to": "Write access to customer records is forbidden"
+        },
+        {
+          "field": "accepted_decisions",
+          "id": "d-read",
+          "from": null,
+          "to": "Read-only export is accepted"
+        },
+        {
+          "field": "rejected_alternatives",
+          "id": "r-write",
+          "from": null,
+          "to": "Grant write access for in-place cleanup"
+        },
+        {
+          "field": "unresolved_items",
+          "id": "u-scope",
+          "from": "Read+write requested; not yet decided",
+          "to": null
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "changes": [
+        {
+          "field": "current_rationale",
+          "id": null,
+          "from": "Read-only export is in force. Write remains rejected. PII must not be logged.",
+          "to": "Read-only export is in force. Write remains rejected until legal review resolves. PII must not be logged."
+        },
+        {
+          "field": "unresolved_items",
+          "id": "u-legal",
+          "from": null,
+          "to": "Status of legal review ticket LGL-884 is UNKNOWN"
+        },
+        {
+          "field": "contested_claims",
+          "id": "k-reopen-write",
+          "from": null,
+          "to": "Whether write access should be reopened after legal review"
+        },
+        {
+          "field": "unknown_operations",
+          "id": "op-lgl-884",
+          "from": null,
+          "to": "Legal review ticket LGL-884 status is UNKNOWN",
+          "status": "UNKNOWN"
+        }
+      ]
+    }
+  ],
+  "audit_snapshots_validator_only": [
+    {
+      "seq": 1,
       "from_state": {
-        "active_goal": "",
-        "task_position": "Not started",
         "constraints": [],
         "accepted_decisions": [],
         "rejected_alternatives": [],
         "unresolved_items": [],
         "contested_claims": [],
-        "current_rationale": "",
         "unknown_operations": [],
         "artifact_refs": [],
-        "process_position": "Not started"
+        "active_goal": "",
+        "task_position": "",
+        "current_rationale": "",
+        "process_position": ""
       },
       "to_state": {
-        "active_goal": "Produce a customer-export",
-        "task_position": "Access request pending",
         "constraints": [],
         "accepted_decisions": [],
         "rejected_alternatives": [],
@@ -100,27 +230,23 @@
           }
         ],
         "contested_claims": [],
-        "current_rationale": "Scope not yet accepted.",
         "unknown_operations": [],
         "artifact_refs": [
           {
             "id": "art-export-spec",
-            "text": "customer-export field list"
+            "text": "customer-export field list",
+            "current": true
           }
         ],
+        "active_goal": "Produce a customer-export",
+        "task_position": "Access request pending",
+        "current_rationale": "Scope not yet accepted.",
         "process_position": "Waiting for access decision"
       }
     },
     {
       "seq": 2,
-      "type": "ACCEPT_AND_REJECT",
-      "accepted_at": "logical:t2",
-      "supersedes": [
-        "u-scope"
-      ],
       "from_state": {
-        "active_goal": "Produce a customer-export",
-        "task_position": "Access request pending",
         "constraints": [],
         "accepted_decisions": [],
         "rejected_alternatives": [],
@@ -132,19 +258,20 @@
           }
         ],
         "contested_claims": [],
-        "current_rationale": "Scope not yet accepted.",
         "unknown_operations": [],
         "artifact_refs": [
           {
             "id": "art-export-spec",
-            "text": "customer-export field list"
+            "text": "customer-export field list",
+            "current": true
           }
         ],
+        "active_goal": "Produce a customer-export",
+        "task_position": "Access request pending",
+        "current_rationale": "Scope not yet accepted.",
         "process_position": "Waiting for access decision"
       },
       "to_state": {
-        "active_goal": "Produce a customer-export for internal review",
-        "task_position": "Read-only accepted; write rejected",
         "constraints": [
           {
             "id": "c-read-only",
@@ -173,25 +300,23 @@
         ],
         "unresolved_items": [],
         "contested_claims": [],
-        "current_rationale": "Read-only export is in force. Write remains rejected. PII must not be logged.",
         "unknown_operations": [],
         "artifact_refs": [
           {
             "id": "art-export-spec",
-            "text": "customer-export field list"
+            "text": "customer-export field list",
+            "current": true
           }
         ],
+        "active_goal": "Produce a customer-export for internal review",
+        "task_position": "Read-only accepted; write rejected",
+        "current_rationale": "Read-only export is in force. Write remains rejected. PII must not be logged.",
         "process_position": "Proceed with read-only export; do not write; do not log PII"
       }
     },
     {
       "seq": 3,
-      "type": "MARK_UNKNOWN",
-      "accepted_at": "logical:t3",
-      "supersedes": [],
       "from_state": {
-        "active_goal": "Produce a customer-export for internal review",
-        "task_position": "Read-only accepted; write rejected",
         "constraints": [
           {
             "id": "c-read-only",
@@ -220,19 +345,20 @@
         ],
         "unresolved_items": [],
         "contested_claims": [],
-        "current_rationale": "Read-only export is in force. Write remains rejected. PII must not be logged.",
         "unknown_operations": [],
         "artifact_refs": [
           {
             "id": "art-export-spec",
-            "text": "customer-export field list"
+            "text": "customer-export field list",
+            "current": true
           }
         ],
+        "active_goal": "Produce a customer-export for internal review",
+        "task_position": "Read-only accepted; write rejected",
+        "current_rationale": "Read-only export is in force. Write remains rejected. PII must not be logged.",
         "process_position": "Proceed with read-only export; do not write; do not log PII"
       },
       "to_state": {
-        "active_goal": "Produce a customer-export for internal review",
-        "task_position": "Mid-task after scope was reduced to read-only",
         "constraints": [
           {
             "id": "c-read-only",
@@ -273,24 +399,51 @@
             "current": true
           }
         ],
-        "current_rationale": "Read-only export is in force. Write remains rejected until legal review resolves. PII must not be logged.",
         "unknown_operations": [
           {
             "id": "op-lgl-884",
-            "status": "UNKNOWN",
-            "text": "Legal review ticket LGL-884 status is UNKNOWN"
+            "text": "Legal review ticket LGL-884 status is UNKNOWN",
+            "current": true,
+            "status": "UNKNOWN"
           }
         ],
         "artifact_refs": [
           {
             "id": "art-export-spec",
-            "text": "customer-export field list"
+            "text": "customer-export field list",
+            "current": true
           }
         ],
+        "active_goal": "Produce a customer-export for internal review",
+        "task_position": "Read-only accepted; write rejected",
+        "current_rationale": "Read-only export is in force. Write remains rejected until legal review resolves. PII must not be logged.",
         "process_position": "Proceed with read-only export; do not write; do not log PII"
       }
     }
   ],
+  "provenance_validator_only": [
+    {
+      "seq": 1,
+      "type": "OPEN_REQUEST",
+      "accepted_at": "logical:t1",
+      "supersedes": []
+    },
+    {
+      "seq": 2,
+      "type": "ACCEPT_AND_REJECT",
+      "accepted_at": "logical:t2",
+      "supersedes": [
+        "u-scope"
+      ]
+    },
+    {
+      "seq": 3,
+      "type": "MARK_UNKNOWN",
+      "accepted_at": "logical:t3",
+      "supersedes": []
+    }
+  ],
+  "reader_note": "Claim B reader packages are built by build_reader_packages(); provenance and audit snapshots are excluded.",
   "probes": [
     {
       "probe_id": "FX02-P1",
