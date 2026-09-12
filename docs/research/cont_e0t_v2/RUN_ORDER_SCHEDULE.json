@@ -1,0 +1,44 @@
+{
+  "document": "CONT-E0T-RUN-ORDER-V1",
+  "status": "COMMITTED_BEFORE_EXECUTION",
+  "generated_utc": "2026-09-12T17:28:00Z",
+  "note": "No reader call. Slots only. Fixtures not authored.",
+  "reader_model_request": "deepseek-flash",
+  "pair_rule": "adjacent T1/T2 per slot",
+  "counterbalance": "ABBA",
+  "slots": [
+    {
+      "slot": "EVID-01",
+      "family": "FAM-HOLD-CLASS",
+      "arm_order": [
+        "T1",
+        "T2"
+      ]
+    },
+    {
+      "slot": "EVID-02",
+      "family": "FAM-MEMBER-CHANNEL",
+      "arm_order": [
+        "T2",
+        "T1"
+      ]
+    },
+    {
+      "slot": "EVID-03",
+      "family": "FAM-HOLD-CLASS",
+      "arm_order": [
+        "T2",
+        "T1"
+      ]
+    },
+    {
+      "slot": "EVID-04",
+      "family": "FAM-MEMBER-CHANNEL",
+      "arm_order": [
+        "T1",
+        "T2"
+      ]
+    }
+  ],
+  "experiment_authorization": "NOT_AUTHORIZED"
+}

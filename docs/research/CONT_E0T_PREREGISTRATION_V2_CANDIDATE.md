@@ -112,10 +112,10 @@ Do **not** construct an Evidence partition from these until another bounded revi
 
 | # | Field | Status | Bound now | Open |
 |---|-------|--------|-----------|------|
-| 1 | Primary confirmatory surface | **PARTIAL** | Claim B; PRIMARY←T1; PILOT probes | Discriminator set not accepted |
-| 2 | Fixture set | **PARTIAL** | Two hashed PILOT_ONLY fixtures; EVIDENCE empty | Owner accept; candidates not in set |
-| 3 | Queries | **PARTIAL** | PILOT gold + D8 lock | Candidate probes not frozen |
-| 4 | Equivalence | **PARTIAL** | Byte-identical current; fold(thin) = current | Shared evaluator outside this script |
+| 1 | Primary confirmatory surface | **FROZEN_CANDIDATE** | Unit=PRIMARY pair; B rule S≥3 ∧ I=0 | See `CONT_E0T_FIELDS_1_4_RUN_INTEGRITY.md` |
+| 2 | Fixture set | **FROZEN_CANDIDATE** | Design N=4, 2 families; EVIDENCE objects empty | Authoring not started |
+| 3 | Queries | **FROZEN_CANDIDATE** | 1 PRIMARY; compose ≥4; no gold leak | |
+| 4 | Equivalence | **FROZEN_CANDIDATE** | E4.1–E4.10 executable checks | |
 | 5 | Reader / model | **FROZEN_CANDIDATE** | `deepseek-flash` = DeepSeek-V4.1-Flash; identity cleared; wrapper pins unchanged | Weights not immutably pinned; alias mutable |
 | 6 | Rubric | **FROZEN_CANDIDATE** | PRIMARY PASS/PARTIAL/FAIL; HARD FAIL separate; no lexical-only | See `CONT_E0T_PRE_EVIDENCE_RULES.md` |
 | 7 | Reviewers | **FROZEN_CANDIDATE** | Arm-blind X/Y; A/B + adjudicator; fail-closed | `ROSTER_PERSONS_UNFILLED` |
@@ -140,6 +140,7 @@ FROZEN_FIELDS            = 0 / 10
 FIELD_5                  = FROZEN_CANDIDATE
 FIELD_5_MODEL_IDENTITY   = CLEARED
 SNAPSHOT_PINNED          = NO
+READY_TO_AUTHOR_EVIDENCE = YES
 FINAL_PREREG_REVIEW      = NOT_READY
 EXPERIMENT_AUTHORIZATION = NOT_AUTHORIZED
 ```
