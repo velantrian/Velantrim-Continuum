@@ -326,9 +326,10 @@
       "wording": "Which hold ids were already current when c-hold-ash became current?",
       "gold": "c-hold-elm, c-hold-oak.",
       "resume_atoms": [],
-      "why_not_on_T1": "T1 has four current holds: elm, oak (seq1), ash+pine (seq2). Gold is the strict-before set {elm, oak}, not 'all holds except ash' (that wrongly includes pine) and not 'the unique outbound hold' (that is ash). List order is pine, ash, oak, elm — not the gold set and not recency. IDs do not encode time. Rationale/process_position do not state order."
+      "why_not_on_T1": "T1 has four current holds (id-sorted: ash, elm, oak, pine). Gold is the strict-before set {c-hold-elm, c-hold-oak} from thin_trajectory seq1 vs seq2. Not 'all holds except ash' (that includes pine). Not the unique outbound hold (ash). T1 list order is CANONICAL_ID_ASC_NON_TEMPORAL and is not time. I7 MINOR: under id-sort, gold is the interior pair of the four hold ids; protocol forbids reading that order as time. Rationale/process_position do not state order."
     }
   ],
   "t1_list_order": "CANONICAL_ID_ASC_NON_TEMPORAL",
-  "t1_list_order_note": "T1 list order is non-temporal and non-semantic. Arrays are serialized by stable id, not insertion/transition time. thin_trajectory is the only temporal carrier."
+  "t1_list_order_note": "T1 list order is non-temporal and non-semantic. Arrays are serialized by stable id, not insertion/transition time. thin_trajectory is the only temporal carrier.",
+  "i7_minor": "Gold {c-hold-elm, c-hold-oak} is the interior pair of id-sorted holds ash, elm, oak, pine. Documented coincidence. Scientific task unchanged."
 }

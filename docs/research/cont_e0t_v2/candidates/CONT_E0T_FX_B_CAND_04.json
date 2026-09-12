@@ -13,26 +13,6 @@
     "task_position": "Charts 2, 4, and 7 are staged locally",
     "constraints": [
       {
-        "id": "c-hold-flax",
-        "text": "HOLD-flax applies to press releases",
-        "current": true
-      },
-      {
-        "id": "c-pub-ok",
-        "text": "Approved charts may be published to internal wiki",
-        "current": true
-      },
-      {
-        "id": "c-portal",
-        "text": "The client portal is an external channel",
-        "current": true
-      },
-      {
-        "id": "c-hold-rye",
-        "text": "HOLD-rye applies to external channels",
-        "current": true
-      },
-      {
         "id": "c-chart-fmt",
         "text": "Charts use the briefing color set",
         "current": true
@@ -43,13 +23,33 @@
         "current": true
       },
       {
-        "id": "c-prec",
-        "text": "A hold on a communication class outranks a permission on a member of that class",
+        "id": "c-hold-flax",
+        "text": "HOLD-flax applies to press releases",
         "current": true
       },
       {
         "id": "c-hold-maize",
         "text": "HOLD-maize applies to social media",
+        "current": true
+      },
+      {
+        "id": "c-hold-rye",
+        "text": "HOLD-rye applies to external channels",
+        "current": true
+      },
+      {
+        "id": "c-portal",
+        "text": "The client portal is an external channel",
+        "current": true
+      },
+      {
+        "id": "c-prec",
+        "text": "A hold on a communication class outranks a permission on a member of that class",
+        "current": true
+      },
+      {
+        "id": "c-pub-ok",
+        "text": "Approved charts may be published to internal wiki",
         "current": true
       }
     ],
@@ -84,13 +84,13 @@
         "current": true
       },
       {
-        "id": "u-rye",
-        "text": "HOLD-rye clearance is UNKNOWN",
+        "id": "u-maize",
+        "text": "HOLD-maize clearance is UNKNOWN",
         "current": true
       },
       {
-        "id": "u-maize",
-        "text": "HOLD-maize clearance is UNKNOWN",
+        "id": "u-rye",
+        "text": "HOLD-rye clearance is UNKNOWN",
         "current": true
       }
     ],
@@ -110,14 +110,14 @@
         "status": "UNKNOWN"
       },
       {
-        "id": "op-rye",
-        "text": "HOLD-rye clearance check",
+        "id": "op-maize",
+        "text": "HOLD-maize clearance check",
         "current": true,
         "status": "UNKNOWN"
       },
       {
-        "id": "op-maize",
-        "text": "HOLD-maize clearance check",
+        "id": "op-rye",
+        "text": "HOLD-rye clearance check",
         "current": true,
         "status": "UNKNOWN"
       }
@@ -275,7 +275,10 @@
       "wording": "Which hold id became current after the client pack membership was already current?",
       "gold": "c-hold-rye.",
       "resume_atoms": [],
-      "why_not_on_T1": "T1 has c-hold-rye, c-hold-flax, and c-hold-maize all current. List order is flax, rye, maize (rye is middle). IDs do not encode time. Only seq2 marks rye as later."
+      "why_not_on_T1": "T1 has three current holds (id-sorted: flax, maize, rye). Gold is c-hold-rye from thin_trajectory seq2 (after pack membership already current). Not a T1 time rule. List order is CANONICAL_ID_ASC_NON_TEMPORAL. IDs do not encode time. I7-class MINOR: under id-sort, rye is last of the three hold ids; protocol forbids reading that order as time. Only seq2 marks rye as later."
     }
-  ]
+  ],
+  "t1_list_order": "CANONICAL_ID_ASC_NON_TEMPORAL",
+  "t1_list_order_note": "T1 list order is non-temporal and non-semantic. Serialized by stable id. thin_trajectory is the only temporal carrier.",
+  "i7_minor": "Gold c-hold-rye is last of id-sorted holds flax, maize, rye. Documented coincidence. Scientific task unchanged."
 }

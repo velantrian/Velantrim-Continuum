@@ -18,4 +18,4 @@ For every list-valued `CURRENT_SEMANTICS` field on CONT-T1 in a discriminator fi
 `thin_trajectory` (and only that object in the Claim B reader T2 package) carries temporal order.
 
 CAND-03 is serialized under this rule.  
-CAND-04 bytes are **frozen this pass** (already PASS); do not rewrite it here. A later pass may re-serialize CAND-04 under the same rule without changing probes.
+CAND-04 was re-serialized under this rule in the Field 5 hygiene pass. Probes/gold/wording unchanged. Item bags unchanged.
