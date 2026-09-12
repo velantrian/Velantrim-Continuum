@@ -1,0 +1,39 @@
+{
+  "package": "CONT-E0T-V2-PILOT-FIXTURES",
+  "claim_under_test": "B",
+  "partition": {
+    "PILOT": [
+      "CONT-E0T-FX-01",
+      "CONT-E0T-FX-02"
+    ],
+    "EVIDENCE": []
+  },
+  "copied_from_e0t_transfer": false,
+  "reader_prompt_file": "reader_prompt_v2.txt",
+  "reader_prompt_sha256": "73668419a2135e293ef3902a7a974012454ace61cc16ca14fa858f741bfb5db3",
+  "fixtures": [
+    {
+      "fixture_id": "CONT-E0T-FX-01",
+      "file": "CONT_E0T_FX_01.json",
+      "file_sha256": "48be07139b3106a4701e38417b31557fb833b703df2aafc5700a0cfa422dd07d",
+      "canonical_json_sha256": "fb586883be8bd692e251f5884c76112409742e56923d4e5486fca150baeb9406",
+      "partition": "PILOT",
+      "n_transitions": 3,
+      "n_transitions_max": 4
+    },
+    {
+      "fixture_id": "CONT-E0T-FX-02",
+      "file": "CONT_E0T_FX_02.json",
+      "file_sha256": "cdbe362463a077972932a8feba1f753c214b3abfd57269717ca205def890f340",
+      "canonical_json_sha256": "24ccaf1fbd4c0bf59b28bfab543d704f9d79c28a5fe9d768a567dcb5f337ddf6",
+      "partition": "PILOT",
+      "n_transitions": 3,
+      "n_transitions_max": 4
+    }
+  ],
+  "notes": [
+    "Hashes are of the files as committed. Re-run validate_cont_e0t_v2_package.py after any edit.",
+    "EVIDENCE partition is empty. PILOT is not Evidence Lock.",
+    "Field 5 model identity is not in this package."
+  ]
+}
