@@ -2,8 +2,9 @@
 
 > **Status:** NON-CANONICAL HYGIENE INDEX  
 > **Snapshot date:** 2026-09-23  
-> **Baseline:** `main@78a73edf02cfa7e91fe6745b0f925fd5e0e05bc5`  
-> **Coverage:** all 46 off-main branches visible after creation of remediation PRs #59 and #60.
+> **Audit comparison baseline:** `main@78a73edf02cfa7e91fe6745b0f925fd5e0e05bc5`  
+> **Coverage:** all 46 off-main branches visible during the audit/remediation snapshot before PR #59 merged.  
+> **Post-merge note:** PR #59 merged to `main@90ec316335184077869dcfb65b8a3af3248ad60c` and its branch was auto-deleted; 45 off-main branches remain while PR #60 is open.
 
 ## Boundary
 
@@ -25,7 +26,7 @@ These branches were created by the 2026-09-23 audit remediation and are governed
 
 | Branch | PR | Lifecycle |
 | --- | ---: | --- |
-| `fix/pilot-authority-contract-completion-20260923` | #59 | OPEN — bounded P1 remediation |
+| `fix/pilot-authority-contract-completion-20260923` | #59 | MERGED — branch auto-deleted after merge |
 | `chore/hygiene-audit-followup-20260923` | #60 | OPEN — bounded hygiene remediation |
 
 ## Fully absorbed by `main`
@@ -79,7 +80,7 @@ Until separately reconciled, classify them as `UNTRIAGED_DIVERGED_HISTORY`.
 
 ## Unique-ahead research branches
 
-These 13 branches were re-compared against `main` and have unique commits with `behind_by = 0`.
+At the audit baseline above, these 13 branches had unique commits with `behind_by = 0`. After PR #59 advanced `main`, their live ahead/behind relation may mechanically become diverged; the table preserves the bounded audit snapshot rather than pretending to be a continuously refreshed authority surface.
 
 Their lifecycle is intentionally **not inferred** from branch names. Until a durable decision says otherwise, treat them as `UNTRIAGED_RESEARCH_LINEAGE`, except where an explicit durable state is already known.
 
