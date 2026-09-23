@@ -193,7 +193,7 @@ Fail closed если:
 - manifest/request symlink/non-regular;
 - request hash mismatch;
 - missing/invalid tool policy, budget, network dependency or manual-stop binding;
-- unsupported credential scope or credential environment variable outside the exact environment allowlist;
+- missing/invalid credential scope or credential environment variable outside the exact environment allowlist;
 - output path symlink/escape;
 - Evidence ID requested;
 - unsupported posture;
