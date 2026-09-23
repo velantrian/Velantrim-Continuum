@@ -4,7 +4,8 @@
 > **Snapshot date:** 2026-09-23  
 > **Audit comparison baseline:** `main@78a73edf02cfa7e91fe6745b0f925fd5e0e05bc5`  
 > **Coverage:** all 46 off-main branches visible during the audit/remediation snapshot before PR #59 merged.  
-> **Post-merge note:** PR #59 merged to `main@90ec316335184077869dcfb65b8a3af3248ad60c` and its branch was auto-deleted; 45 off-main branches remain while PR #60 is open.
+> **Post-merge note:** PR #59 merged to `main@90ec316335184077869dcfb65b8a3af3248ad60c` and its branch was auto-deleted; 45 off-main branches remain while PR #60 is open.  
+> **PR #60 provenance:** its remediation branch was rebuilt directly on that merged `main` before final CI, so the final checks validate the combined #59 + #60 tree.
 
 ## Boundary
 
