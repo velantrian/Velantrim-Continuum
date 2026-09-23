@@ -4,8 +4,9 @@
 > **Snapshot date:** 2026-09-23  
 > **Audit comparison baseline:** `main@78a73edf02cfa7e91fe6745b0f925fd5e0e05bc5`  
 > **Coverage:** all 46 off-main branches visible during the audit/remediation snapshot before PR #59 merged.  
-> **Post-merge note:** PR #59 merged to `main@90ec316335184077869dcfb65b8a3af3248ad60c` and its branch was auto-deleted; 45 off-main branches remain while PR #60 is open.  
-> **PR #60 provenance:** its remediation branch was rebuilt directly on that merged `main` before final CI, so the final checks validate the combined #59 + #60 tree.
+> **Post-remediation state:** PR #59 merged to `main@90ec316335184077869dcfb65b8a3af3248ad60c`; PR #60 then merged to `main@e53971609fb54a025ad2cc924acd4a79e2e9f018`. Both remediation branches were auto-deleted after merge.  
+> **Current branch count after both merges:** 44 off-main branches remain.  
+> **PR #60 provenance:** its remediation branch was rebuilt directly on merged #59 before final CI, so the final checks validated the combined #59 + #60 tree.
 
 ## Boundary
 
@@ -21,14 +22,14 @@ This registry is descriptive hygiene metadata only.
 
 Deletion, merge, promotion, or canonicalization still require the relevant project gate.
 
-## Current remediation branches
+## Audit remediation branches
 
-These branches were created by the 2026-09-23 audit remediation and are governed by their PR lifecycle, not by historical-branch classification.
+These branches were created by the 2026-09-23 bounded audit remediation. Both are complete and no longer exist as live branch refs.
 
 | Branch | PR | Lifecycle |
 | --- | ---: | --- |
 | `fix/pilot-authority-contract-completion-20260923` | #59 | MERGED — branch auto-deleted after merge |
-| `chore/hygiene-audit-followup-20260923` | #60 | OPEN — bounded hygiene remediation |
+| `chore/hygiene-audit-followup-20260923` | #60 | MERGED — branch auto-deleted after merge |
 
 ## Fully absorbed by `main`
 
