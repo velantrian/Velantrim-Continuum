@@ -74,7 +74,15 @@ def valid_manifest(root: Path = ROOT, *, request_sha: str = "d" * 64) -> dict:
         "limits": {"timeout_seconds": 2, "max_output_bytes": 4096, "max_runs": 1},
         "evidence_lock": {"status": "NOT_CREATED", "sha256": None},
         "model": {"provider": "example", "identifier": "model-v1", "settings": {}},
-        "credentials": {"profile": "pilot-minimal", "scope": "inference-only"},
+        "credentials": {"profile": "pilot-minimal", "scope": "inference-only", "environment_variables": []},
+        "tool_policy": {"mode": "NO_TOOLS", "allowlist": []},
+        "budget": {"max_total_tokens": 4096, "max_cost": 0.0, "currency": "USD"},
+        "network_dependency": {"required": False, "allowed_hosts": []},
+        "manual_stop": {
+            "owner_github_login": "velantrian",
+            "contact_ref": "test-owner",
+            "procedure": "terminate the local bounded Pilot process",
+        },
         "adapter_command": "python -c \"import json; print(json.dumps({'ok': True}))\"",
         "adapter_cwd": ".",
         "environment_allowlist": [],
@@ -157,6 +165,54 @@ class PilotPreflightTests(unittest.TestCase):
         manifest = valid_manifest()
         manifest["credentials"]["api_key"] = "do-not-store-this"
         with self.assertRaisesRegex(preflight.PreflightError, "secret-bearing field"):
+            validate_structure(manifest)
+
+    def test_missing_tool_policy_fails_closed(self):
+        manifest = valid_manifest()
+        del manifest["tool_policy"]
+        with self.assertRaisesRegex(preflight.PreflightError, "tool_policy"):
+            validate_structure(manifest)
+
+    def test_no_tools_cannot_carry_tool_allowlist(self):
+        manifest = valid_manifest()
+        manifest["tool_policy"]["allowlist"] = ["browser"]
+        with self.assertRaisesRegex(preflight.PreflightError, "empty tool allowlist"):
+            validate_structure(manifest)
+
+    def test_missing_budget_fails_closed(self):
+        manifest = valid_manifest()
+        del manifest["budget"]
+        with self.assertRaisesRegex(preflight.PreflightError, "budget"):
+            validate_structure(manifest)
+
+    def test_network_dependency_requires_explicit_host_binding(self):
+        manifest = valid_manifest()
+        manifest["network_dependency"] = {"required": True, "allowed_hosts": []}
+        with self.assertRaisesRegex(preflight.PreflightError, "requires at least one allowed host"):
+            validate_structure(manifest)
+
+    def test_manual_stop_owner_must_match_owner(self):
+        manifest = valid_manifest()
+        manifest["manual_stop"]["owner_github_login"] = "someone-else"
+        with self.assertRaisesRegex(preflight.PreflightError, "must match owner_github_login"):
+            validate_structure(manifest)
+
+    def test_credential_environment_must_be_allowlisted(self):
+        manifest = valid_manifest()
+        manifest["credentials"]["environment_variables"] = ["MODEL_API_KEY"]
+        with self.assertRaisesRegex(preflight.PreflightError, "not included in environment_allowlist"):
+            validate_structure(manifest)
+
+    def test_missing_credential_scope_fails_closed(self):
+        manifest = valid_manifest()
+        manifest["credentials"]["scope"] = ""
+        with self.assertRaisesRegex(preflight.PreflightError, "credentials.scope"):
+            validate_structure(manifest)
+
+    def test_non_finite_budget_fails_closed(self):
+        manifest = valid_manifest()
+        manifest["budget"]["max_cost"] = float("nan")
+        with self.assertRaisesRegex(preflight.PreflightError, "finite non-negative"):
             validate_structure(manifest)
 
     def test_uncontrolled_posture_cannot_claim_isolation(self):

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -20,6 +21,8 @@ from typing import Any
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
+ALLOWED_TOOL_POLICY_MODES = {"NO_TOOLS", "EXACT_ALLOWLIST", "N_A_NO_TOOL_SURFACE"}
 APPROVAL_PATH = "experiments/e0/approval/human-reference-approval.v0.2.json"
 PROJECT_STATE_PATH = "project-state.json"
 CAPTURE_PILOT_PATH = "experiments/e0/fixtures/capture/pilot/fixtures.json"
@@ -468,6 +471,77 @@ def validate_manifest(
         raise PreflightError("credentials must be an object")
     require_string(credentials.get("profile"), "credentials.profile")
     require_string(credentials.get("scope"), "credentials.scope")
+    credential_env = credentials.get("environment_variables")
+    if not isinstance(credential_env, list) or any(
+        not isinstance(item, str) or not ENV_NAME_RE.fullmatch(item) for item in credential_env
+    ):
+        raise PreflightError("credentials.environment_variables must be a list of valid environment variable names")
+    if len(credential_env) != len(set(credential_env)):
+        raise PreflightError("credentials.environment_variables must not contain duplicates")
+
+    tool_policy = manifest.get("tool_policy")
+    if not isinstance(tool_policy, dict) or set(tool_policy) != {"mode", "allowlist"}:
+        raise PreflightError("tool_policy must contain exactly mode and allowlist")
+    tool_mode = require_string(tool_policy.get("mode"), "tool_policy.mode")
+    if tool_mode not in ALLOWED_TOOL_POLICY_MODES:
+        raise PreflightError("tool_policy.mode is unsupported")
+    tool_allowlist = tool_policy.get("allowlist")
+    if not isinstance(tool_allowlist, list) or any(
+        not isinstance(item, str) or not item.strip() for item in tool_allowlist
+    ):
+        raise PreflightError("tool_policy.allowlist must be a list of non-empty strings")
+    if len(tool_allowlist) != len(set(tool_allowlist)):
+        raise PreflightError("tool_policy.allowlist must not contain duplicates")
+    if tool_mode == "EXACT_ALLOWLIST" and not tool_allowlist:
+        raise PreflightError("EXACT_ALLOWLIST requires at least one tool")
+    if tool_mode != "EXACT_ALLOWLIST" and tool_allowlist:
+        raise PreflightError(f"{tool_mode} requires an empty tool allowlist")
+
+    budget = manifest.get("budget")
+    if not isinstance(budget, dict) or set(budget) != {"max_total_tokens", "max_cost", "currency"}:
+        raise PreflightError("budget must contain exactly max_total_tokens, max_cost and currency")
+    max_total_tokens = budget.get("max_total_tokens")
+    if not isinstance(max_total_tokens, int) or isinstance(max_total_tokens, bool) or max_total_tokens <= 0:
+        raise PreflightError("budget.max_total_tokens must be a positive integer")
+    max_cost = budget.get("max_cost")
+    if (
+        not isinstance(max_cost, (int, float))
+        or isinstance(max_cost, bool)
+        or not math.isfinite(max_cost)
+        or max_cost < 0
+    ):
+        raise PreflightError("budget.max_cost must be a finite non-negative number")
+    currency = require_string(budget.get("currency"), "budget.currency")
+    if not CURRENCY_RE.fullmatch(currency):
+        raise PreflightError("budget.currency must be an uppercase ISO-style three-letter code")
+
+    network_dependency = manifest.get("network_dependency")
+    if not isinstance(network_dependency, dict) or set(network_dependency) != {"required", "allowed_hosts"}:
+        raise PreflightError("network_dependency must contain exactly required and allowed_hosts")
+    network_required = network_dependency.get("required")
+    allowed_hosts = network_dependency.get("allowed_hosts")
+    if not isinstance(network_required, bool):
+        raise PreflightError("network_dependency.required must be boolean")
+    if not isinstance(allowed_hosts, list) or any(
+        not isinstance(item, str) or not item.strip() for item in allowed_hosts
+    ):
+        raise PreflightError("network_dependency.allowed_hosts must be a list of non-empty host strings")
+    if len(allowed_hosts) != len(set(allowed_hosts)):
+        raise PreflightError("network_dependency.allowed_hosts must not contain duplicates")
+    if network_required and not allowed_hosts:
+        raise PreflightError("network_dependency.required=true requires at least one allowed host")
+    if not network_required and allowed_hosts:
+        raise PreflightError("network_dependency.required=false requires an empty allowed_hosts list")
+
+    manual_stop = manifest.get("manual_stop")
+    if not isinstance(manual_stop, dict) or set(manual_stop) != {"owner_github_login", "contact_ref", "procedure"}:
+        raise PreflightError("manual_stop must contain exactly owner_github_login, contact_ref and procedure")
+    stop_owner = require_string(manual_stop.get("owner_github_login"), "manual_stop.owner_github_login")
+    if stop_owner != manifest.get("owner_github_login"):
+        raise PreflightError("manual_stop.owner_github_login must match owner_github_login")
+    require_string(manual_stop.get("contact_ref"), "manual_stop.contact_ref")
+    require_string(manual_stop.get("procedure"), "manual_stop.procedure")
+
     require_string(manifest.get("adapter_command"), "adapter_command")
     require_sha256(manifest.get("request_sha256"), "request_sha256")
 
@@ -481,6 +555,12 @@ def validate_manifest(
         raise PreflightError("environment_allowlist must be a list of valid environment variable names")
     if len(env_allowlist) != len(set(env_allowlist)):
         raise PreflightError("environment_allowlist must not contain duplicates")
+    missing_credential_env = sorted(set(credential_env) - set(env_allowlist))
+    if missing_credential_env:
+        raise PreflightError(
+            "credentials.environment_variables are not included in environment_allowlist: "
+            + ", ".join(missing_credential_env)
+        )
 
     output_destination = require_string(manifest.get("output_destination"), "output_destination")
     if output_destination != PILOT_OUTPUT_DESTINATION:
@@ -495,6 +575,10 @@ def validate_manifest(
         f"activation_tree={provenance['activation_tree'] if provenance else '<unchecked>'}",
         f"activation_paths={','.join(provenance['activation_paths']) if provenance else '<unchecked>'}",
         f"pilot_ids={','.join(requested)}",
+        f"tool_policy={tool_mode}",
+        f"budget_tokens={max_total_tokens}",
+        f"budget_cost={max_cost} {currency}",
+        f"network_required={network_required}",
         f"posture={posture}",
     ]
 

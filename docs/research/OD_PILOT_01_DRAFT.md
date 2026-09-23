@@ -82,17 +82,27 @@ Manifest минимум содержит:
 - Pilot-only IDs;
 - exact request SHA-256;
 - provider/model/settings;
-- credential profile/scope без secret values;
+- explicit `tool_policy` with bounded mode + exact allowlist;
+- credential profile/scope без secret values + exact credential environment-variable bindings;
 - exact adapter command;
 - repository-relative adapter cwd;
 - environment allowlist;
 - limits;
+- explicit token/monetary `budget`;
+- explicit `network_dependency` declaration;
+- explicit `manual_stop` owner/contact reference/procedure;
 - `output_destination = .velantrim-continuum-pilot-runs`;
 - `evidence_lock = {status: NOT_CREATED, sha256: null}`.
 
 Manifest **не содержит** `execution_head_commit`, `execution_tree`, `authorization_base_commit` или `authorization_base_tree`: такие поля создают или возвращают self-referential identity coupling и fail-closed запрещены.
 
 Manifest necessary but not sufficient authority. Owner adoption до A связывается с exact canonical manifest path/SHA и pinned scope, но **не** с будущим A/tree(A). После commit A только будущий canonical activation record в отдельном B hash-bind exact manifest blob from A и A/tree(A).
+
+### Contract binding vs runtime enforcement
+
+The fields `tool_policy`, `budget`, `network_dependency`, credential scope/environment bindings and `manual_stop` are **content-bound authorization inputs**. Preflight validates their presence, shape and internal consistency so they cannot be silently omitted from an adopted package.
+
+Under `UNCONTROLLED_LOCAL_ADVISORY`, this does **not** prove sandbox enforcement, provider-side credential scope, network host filtering, token metering or monetary quota enforcement. The machine-enforced local controls remain the controls actually implemented by the executor (including exact package binding, direct-child activation, timeout, output cap, max-runs reservation, output containment and process lifecycle containment). Any stronger provider/network/budget enforcement requires a separately implemented and reviewed control before it may be claimed as enforced.
 
 ## 5. Future canonical authorization record
 
@@ -182,6 +192,8 @@ Fail closed если:
 - worktree dirty до, после child validator или непосредственно перед execution steps;
 - manifest/request symlink/non-regular;
 - request hash mismatch;
+- missing/invalid tool policy, budget, network dependency or manual-stop binding;
+- missing/invalid credential scope or credential environment variable outside the exact environment allowlist;
 - output path symlink/escape;
 - Evidence ID requested;
 - unsupported posture;
