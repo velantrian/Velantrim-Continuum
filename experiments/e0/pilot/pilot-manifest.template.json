@@ -16,7 +16,9 @@
       "sha256": "9b806fdb44ff84ba0456d0dd480c328398915ca40f9de7f9e0232452678e2025"
     }
   ],
-  "fixture_or_scenario_ids": ["<PILOT-only ID>"],
+  "fixture_or_scenario_ids": [
+    "<PILOT-only ID>"
+  ],
   "request_sha256": "<sha256 of exact authorized request JSON>",
   "execution_posture": "UNCONTROLLED_LOCAL_ADVISORY",
   "isolation": {
@@ -41,10 +43,29 @@
   },
   "credentials": {
     "profile": "<credential profile reference; no secret>",
-    "scope": "<minimal required scope>"
+    "scope": "<minimal required scope>",
+    "environment_variables": []
   },
   "adapter_command": "<exact adapter command>",
   "adapter_cwd": ".",
   "environment_allowlist": [],
-  "output_destination": ".velantrim-continuum-pilot-runs"
+  "output_destination": ".velantrim-continuum-pilot-runs",
+  "tool_policy": {
+    "mode": "NO_TOOLS",
+    "allowlist": []
+  },
+  "budget": {
+    "max_total_tokens": "<positive integer>",
+    "max_cost": "<non-negative number>",
+    "currency": "<ISO-style currency code, e.g. USD>"
+  },
+  "network_dependency": {
+    "required": "<true|false>",
+    "allowed_hosts": []
+  },
+  "manual_stop": {
+    "owner_github_login": "<owner-login>",
+    "contact_ref": "<reviewable contact/reference; no secret>",
+    "procedure": "<exact manual stop procedure>"
+  }
 }
