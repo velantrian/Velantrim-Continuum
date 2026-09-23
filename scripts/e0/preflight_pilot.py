@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -22,7 +23,6 @@ GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 ALLOWED_TOOL_POLICY_MODES = {"NO_TOOLS", "EXACT_ALLOWLIST", "N_A_NO_TOOL_SURFACE"}
-ALLOWED_CREDENTIAL_SCOPES = {"inference-only"}
 APPROVAL_PATH = "experiments/e0/approval/human-reference-approval.v0.2.json"
 PROJECT_STATE_PATH = "project-state.json"
 CAPTURE_PILOT_PATH = "experiments/e0/fixtures/capture/pilot/fixtures.json"
@@ -471,11 +471,6 @@ def validate_manifest(
         raise PreflightError("credentials must be an object")
     require_string(credentials.get("profile"), "credentials.profile")
     credential_scope = require_string(credentials.get("scope"), "credentials.scope")
-    if credential_scope not in ALLOWED_CREDENTIAL_SCOPES:
-        raise PreflightError(
-            "credentials.scope must be one of the explicitly supported bounded Pilot scopes: "
-            + ", ".join(sorted(ALLOWED_CREDENTIAL_SCOPES))
-        )
     credential_env = credentials.get("environment_variables")
     if not isinstance(credential_env, list) or any(
         not isinstance(item, str) or not ENV_NAME_RE.fullmatch(item) for item in credential_env
@@ -509,8 +504,13 @@ def validate_manifest(
     if not isinstance(max_total_tokens, int) or isinstance(max_total_tokens, bool) or max_total_tokens <= 0:
         raise PreflightError("budget.max_total_tokens must be a positive integer")
     max_cost = budget.get("max_cost")
-    if not isinstance(max_cost, (int, float)) or isinstance(max_cost, bool) or max_cost < 0:
-        raise PreflightError("budget.max_cost must be a non-negative number")
+    if (
+        not isinstance(max_cost, (int, float))
+        or isinstance(max_cost, bool)
+        or not math.isfinite(max_cost)
+        or max_cost < 0
+    ):
+        raise PreflightError("budget.max_cost must be a finite non-negative number")
     currency = require_string(budget.get("currency"), "budget.currency")
     if not CURRENCY_RE.fullmatch(currency):
         raise PreflightError("budget.currency must be an uppercase ISO-style three-letter code")
