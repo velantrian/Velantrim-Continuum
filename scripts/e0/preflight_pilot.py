@@ -470,7 +470,7 @@ def validate_manifest(
     if not isinstance(credentials, dict):
         raise PreflightError("credentials must be an object")
     require_string(credentials.get("profile"), "credentials.profile")
-    credential_scope = require_string(credentials.get("scope"), "credentials.scope")
+    require_string(credentials.get("scope"), "credentials.scope")
     credential_env = credentials.get("environment_variables")
     if not isinstance(credential_env, list) or any(
         not isinstance(item, str) or not ENV_NAME_RE.fullmatch(item) for item in credential_env
