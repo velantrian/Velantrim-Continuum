@@ -1,1 +1,8 @@
+# Exact Experiment 0 validation dependency closure.
+# Verified on GitHub Actions ubuntu-24.04 / Python 3.11 on 2026-09-23.
+attrs==26.1.0
 jsonschema==4.23.0
+jsonschema-specifications==2025.9.1
+referencing==0.37.0
+rpds-py==2026.6.3
+typing-extensions==4.16.0

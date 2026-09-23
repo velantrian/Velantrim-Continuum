@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import unicodedata
 from pathlib import Path, PurePosixPath
@@ -28,14 +27,6 @@ CAPTURE_ITEM_HARD_FAIL_CLASSES = {
     "LOST_CRITICAL_RESTRICTION",
     "UNSAFE_EPISTEMIC_PROMOTION",
 }
-
-
-def canonical_json(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-
-
-def sha256_value(value: Any) -> str:
-    return hashlib.sha256(canonical_json(value)).hexdigest()
 
 
 def sha256_file(path: str | Path) -> str:
