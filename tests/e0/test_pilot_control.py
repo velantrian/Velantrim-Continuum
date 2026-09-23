@@ -203,10 +203,16 @@ class PilotPreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(preflight.PreflightError, "not included in environment_allowlist"):
             validate_structure(manifest)
 
-    def test_unsupported_credential_scope_fails_closed(self):
+    def test_missing_credential_scope_fails_closed(self):
         manifest = valid_manifest()
-        manifest["credentials"]["scope"] = "admin"
-        with self.assertRaisesRegex(preflight.PreflightError, "supported bounded Pilot scopes"):
+        manifest["credentials"]["scope"] = ""
+        with self.assertRaisesRegex(preflight.PreflightError, "credentials.scope"):
+            validate_structure(manifest)
+
+    def test_non_finite_budget_fails_closed(self):
+        manifest = valid_manifest()
+        manifest["budget"]["max_cost"] = float("nan")
+        with self.assertRaisesRegex(preflight.PreflightError, "finite non-negative"):
             validate_structure(manifest)
 
     def test_uncontrolled_posture_cannot_claim_isolation(self):
