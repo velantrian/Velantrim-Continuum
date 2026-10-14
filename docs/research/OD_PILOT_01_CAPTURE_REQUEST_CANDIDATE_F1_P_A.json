@@ -1,0 +1,41 @@
+{
+  "arm": "CAPTURE_ONLY",
+  "clarification_policy": {
+    "max_turns": 0,
+    "mode": "NONE",
+    "scripted_answer": null
+  },
+  "fixture_id": "F1-P-A",
+  "fixture_set": {
+    "path": "experiments/e0/fixtures/capture/pilot/fixtures.json",
+    "sha256": "f07a028f7331a02d54add8f360ce11b7b87666db5687c0bf33295338ade5d17c"
+  },
+  "instructions": "Capture the durable working state implied by the interaction. Return only one JSON object conforming to the referenced e0-state schema. Do not call tools. Do not take actions.",
+  "interaction": [
+    {
+      "content": "Do not publish the release note without my explicit approval.",
+      "role": "user"
+    }
+  ],
+  "label": "PILOT — NOT EVIDENCE",
+  "model": {
+    "identifier": "openai/gpt-6-luna",
+    "max_tokens": 24000,
+    "provider": "openrouter",
+    "settings": {
+      "reasoning": {
+        "effort": "xhigh"
+      }
+    }
+  },
+  "output_contract": {
+    "format": "JSON object conforming to experiments/e0/schema/e0-state.schema.json",
+    "schema_path": "experiments/e0/schema/e0-state.schema.json",
+    "schema_sha256": "9f11ba4c0fb928334bc28a2ae7b0531d0ddcd49ff4c29e4fd2405b3a906d94fd"
+  },
+  "request_version": "od-pilot-01-capture-request.v0.1",
+  "tool_policy": {
+    "allowlist": [],
+    "mode": "NO_TOOLS"
+  }
+}
