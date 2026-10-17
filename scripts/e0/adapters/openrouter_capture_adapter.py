@@ -152,10 +152,13 @@ def extract_state(response: dict[str, Any], max_total_tokens: int) -> dict[str, 
     if "error" in response:
         raise CaptureAdapterError("provider returned an error object")
     usage = response.get("usage")
-    if isinstance(usage, dict):
-        total = usage.get("total_tokens")
-        if isinstance(total, int) and total > max_total_tokens:
-            raise CaptureAdapterError(f"reported usage {total} exceeds max_total_tokens {max_total_tokens}")
+    if not isinstance(usage, dict):
+        raise CaptureAdapterError("provider response must report usage.total_tokens")
+    total = usage.get("total_tokens")
+    if not isinstance(total, int) or isinstance(total, bool) or total < 0:
+        raise CaptureAdapterError("usage.total_tokens must be a non-negative integer")
+    if total > max_total_tokens:
+        raise CaptureAdapterError(f"reported usage {total} exceeds max_total_tokens {max_total_tokens}")
     choices = response.get("choices")
     if not isinstance(choices, list) or len(choices) != 1:
         raise CaptureAdapterError("response must contain exactly one choice")

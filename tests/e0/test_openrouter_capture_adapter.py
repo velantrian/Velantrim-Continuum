@@ -120,6 +120,19 @@ class OpenRouterCaptureAdapterTests(unittest.TestCase):
         with self.assertRaises(adapter.CaptureAdapterError):
             self.run_ok(MockTransport(body=completion(json.dumps(VALID_STATE), total_tokens=40000)))
 
+    def test_rejects_missing_or_invalid_usage(self):
+        invalid = [None, {}, {"total_tokens": None}, {"total_tokens": -1},
+                   {"total_tokens": True}, {"total_tokens": "1200"}, {"total_tokens": 1.5}]
+        for usage in invalid:
+            body = completion(json.dumps(VALID_STATE))
+            body["usage"] = usage
+            with self.subTest(usage=usage), self.assertRaises(adapter.CaptureAdapterError):
+                self.run_ok(MockTransport(body=body))
+        body = completion(json.dumps(VALID_STATE))
+        del body["usage"]
+        with self.assertRaises(adapter.CaptureAdapterError):
+            self.run_ok(MockTransport(body=body))
+
     def test_rejects_max_tokens_over_budget_before_call(self):
         t = MockTransport(body=completion(json.dumps(VALID_STATE)))
         with self.assertRaises(adapter.CaptureAdapterError):
