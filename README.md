@@ -1,5 +1,14 @@
 # 🌎 Velantrim Continuum 🪎
 
+> 🌎 **What must survive when an AI model or conversation is replaced?**
+>
+> **Why:** Long work breaks when a model is restarted and loses the working point. Continuum studies the minimum durable state needed for a different inference instance to resume coherently.
+>
+> **Example:** Record the current task, open questions and source references; after a model switch, test what the successor can genuinely reconstruct.
+>
+> **Scope:** Research / pre-implementation; continuity is a testable hypothesis, not a deployed promise.
+
+
 > **IDPS Research — Inference-Decoupled Process Substrate**  
 > **Status:** Research / Pre-implementation
 
