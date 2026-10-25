@@ -23,7 +23,11 @@ from preflight_pilot import (
     validate_human_approval,
     validate_manifest,
 )
-from run_adapter import AdapterError, bounded_run
+from run_adapter import AdapterError, AdapterTimeoutError, bounded_run
+
+
+class PilotUnknownOutcome(AdapterError):
+    """Adapter exit 4: request may have been processed without a usable response."""
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
@@ -227,11 +231,14 @@ def main() -> int:
         )
         if returncode != 0:
             stderr_text_utf8 = stderr.encode("utf-8", errors="replace")
-            raise AdapterError(
-                f"adapter failed with return code {returncode}; "
+            detail = (
+                f"adapter exited with return code {returncode}; "
                 f"stderr_text_utf8_sha256={hashlib.sha256(stderr_text_utf8).hexdigest()}; "
                 f"stderr_text_utf8_bytes={len(stderr_text_utf8)}"
             )
+            if returncode == 4:
+                raise PilotUnknownOutcome(detail)
+            raise AdapterError(detail)
         try:
             response = json.loads(stdout)
         except json.JSONDecodeError as exc:
@@ -275,6 +282,19 @@ def main() -> int:
         )
         print(f"PILOT_EXECUTION_COMPLETED: {attempt_dir}")
         return 0
+    except (PilotUnknownOutcome, AdapterTimeoutError) as exc:
+        if attempt_dir is not None:
+            try:
+                atomic_write_json(attempt_dir / "result.json", {
+                    "status": "UNKNOWN_OUTCOME",
+                    "label": "PILOT — NOT EVIDENCE",
+                    "adapter_exit_code": 4 if isinstance(exc, PilotUnknownOutcome) else None,
+                    "error": str(exc),
+                })
+            except OSError:
+                pass
+        print(f"PILOT_EXECUTION_UNKNOWN_OUTCOME: {exc}", file=sys.stderr)
+        return 4
     except (PreflightError, AdapterError, OSError) as exc:
         if attempt_dir is not None:
             try:

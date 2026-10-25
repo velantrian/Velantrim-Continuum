@@ -20,6 +20,11 @@ class AdapterError(RuntimeError):
     pass
 
 
+class AdapterTimeoutError(AdapterError):
+    """Child exceeded the bounded deadline; a provider request may have been sent."""
+    pass
+
+
 def terminate_process_tree(proc: subprocess.Popen[str]) -> None:
     """Terminate the adapter process tree with best available platform semantics."""
     if os.name == "posix":
@@ -120,7 +125,7 @@ def bounded_run(
         try:
             while proc.poll() is None:
                 if time.monotonic() >= deadline:
-                    raise AdapterError(f"adapter timeout after {timeout_seconds}s")
+                    raise AdapterTimeoutError(f"adapter timeout after {timeout_seconds}s")
                 if stdout_file.tell() > max_output_bytes or stderr_file.tell() > max_output_bytes:
                     raise AdapterError(f"adapter output exceeded {max_output_bytes} bytes")
                 time.sleep(0.02)

@@ -131,4 +131,4 @@ Contact/owner login: `PENDING_OWNER`.
 | 3 | `CAPTURE_ADAPTER_ERROR: unexpected <Type>` | unexpected internal exception (fail closed) |
 | 4 | `CAPTURE_ADAPTER_UNKNOWN_OUTCOME:` | timeout or connection lost **after send**: the provider may have processed/billed the call; outcome unknown. Never retried automatically |
 
-Single attempt, no retries in all cases. Note: `scripts/e0/execute_pilot.py` currently treats every non-zero exit the same; distinguishing exit 4 there is a follow-up.
+Single attempt, no retries in all cases. `scripts/e0/execute_pilot.py` preserves adapter exit 4 as Pilot `UNKNOWN_OUTCOME` (CLI exit 4), not `FAILED` or `COMPLETED`. A bounded runner timeout is also conservatively `UNKNOWN_OUTCOME` because it cannot prove whether the request reached the provider. Neither status authorizes a Pilot or creates Evidence Lock.
