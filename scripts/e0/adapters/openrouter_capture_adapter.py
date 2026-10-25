@@ -17,7 +17,8 @@ Contract (derived from scripts/e0/execute_pilot.py and the PR #62 config draft Â
 - max_tokens from request.model.max_tokens; reported usage must not exceed --max-total-tokens;
 - model output parsed into exactly one JSON object, validated against the referenced
   e0-state schema (schema bytes must match request.output_contract.schema_sha256);
-- the object is printed to stdout; any error -> non-zero exit with a short stderr message.
+- the object is printed to stdout; any error -> non-zero exit with a short stderr message;
+- timeout / connection lost after send -> UNKNOWN_OUTCOME (exit 4), distinct from error (exit 2); never retried.
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ sys.dont_write_bytecode = True
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import urllib.error
@@ -45,6 +47,16 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 class CaptureAdapterError(RuntimeError):
     pass
+
+
+class CaptureUnknownOutcome(CaptureAdapterError):
+    """The request may have reached the provider, but no usable response arrived
+    (timeout or connection lost after send). Outcome is UNKNOWN, not a plain error:
+    the call may have been processed/billed. Still fail-closed; never retried."""
+
+
+# Errors that prove the request never left (nothing was sent) -> plain error.
+_PRE_SEND_ERRORS = (ConnectionRefusedError,)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -144,8 +156,19 @@ def default_transport(url: str, body: bytes, headers: dict[str, str], timeout: f
             return resp.status, resp.read(MAX_RESPONSE_BYTES + 1)
     except urllib.error.HTTPError as exc:
         return exc.code, b""
-    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+    except urllib.error.URLError as exc:
+        reason = exc.reason
+        if isinstance(reason, TimeoutError):
+            raise CaptureUnknownOutcome(f"transport timeout: {type(reason).__name__}") from None
+        # URLError wraps connect-phase failures (DNS, refused, TLS handshake): not sent.
+        raise CaptureAdapterError(f"transport error: {type(reason).__name__}") from None
+    except TimeoutError as exc:  # socket.timeout is TimeoutError (py>=3.10)
+        raise CaptureUnknownOutcome(f"transport timeout: {type(exc).__name__}") from None
+    except _PRE_SEND_ERRORS as exc:
         raise CaptureAdapterError(f"transport error: {type(exc).__name__}") from None
+    except (http.client.HTTPException, OSError) as exc:
+        # Connection reset / remote closed / incomplete read after the body was sent.
+        raise CaptureUnknownOutcome(f"connection lost after send: {type(exc).__name__}") from None
 
 
 def extract_state(response: dict[str, Any], max_total_tokens: int) -> dict[str, Any]:
@@ -251,6 +274,9 @@ def main(argv: list[str] | None = None) -> int:
             timeout=args.timeout_seconds,
             max_total_tokens=args.max_total_tokens,
         )
+    except CaptureUnknownOutcome as exc:
+        print(f"CAPTURE_ADAPTER_UNKNOWN_OUTCOME: {exc}", file=sys.stderr)
+        return 4
     except CaptureAdapterError as exc:
         print(f"CAPTURE_ADAPTER_ERROR: {exc}", file=sys.stderr)
         return 2
