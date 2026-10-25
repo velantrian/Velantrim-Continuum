@@ -131,4 +131,16 @@ Contact/owner login: `PENDING_OWNER`.
 | 3 | `CAPTURE_ADAPTER_ERROR: unexpected <Type>` | unexpected internal exception (fail closed) |
 | 4 | `CAPTURE_ADAPTER_UNKNOWN_OUTCOME:` | timeout or connection lost **after send**: the provider may have processed/billed the call; outcome unknown. Never retried automatically |
 
-Single attempt, no retries in all cases. Note: `scripts/e0/execute_pilot.py` currently treats every non-zero exit the same; distinguishing exit 4 there is a follow-up.
+Single attempt, no retries in all cases. `scripts/e0/execute_pilot.py` preserves adapter exit 4 as Pilot `UNKNOWN_OUTCOME` (CLI exit 4), not `FAILED` or `COMPLETED`. A bounded runner timeout is also conservatively `UNKNOWN_OUTCOME` because it cannot prove whether the request reached the provider. Neither status authorizes a Pilot or creates Evidence Lock.
+
+Pilot `result.json` mapping (conservative: anything that cannot prove "no provider call" is `UNKNOWN_OUTCOME`):
+
+| Situation | Pilot status | CLI exit |
+|---|---|---|
+| adapter exit 0 + JSON stdout | `COMPLETED` | 0 |
+| adapter exit 2 (definite `CAPTURE_ADAPTER_ERROR`), preflight/authorization error, invalid stdout after exit 0 | `FAILED` | 1 |
+| adapter exit 4, 3, any other non-zero, killed by signal (negative code) | `UNKNOWN_OUTCOME` (`adapter_exit_code` recorded) | 4 |
+| runner timeout, output cap exceeded | `UNKNOWN_OUTCOME` | 4 |
+| SIGINT / SIGTERM after adapter start | `UNKNOWN_OUTCOME` (before start: `FAILED`) | 4 / 1 |
+
+`UNKNOWN_OUTCOME` and `FAILED` results carry `package_sha256`, `attempt`, `request_sha256`. The reserved attempt stays consumed; nothing is retried automatically. Known limitation: SIGKILL of `execute_pilot.py` itself cannot be handled — only `reservation.json` (`RESERVED`) remains and must be read as unknown.

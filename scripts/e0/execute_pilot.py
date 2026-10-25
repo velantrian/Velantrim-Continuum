@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import shlex
+import signal
 import stat
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,27 @@ from preflight_pilot import (
     validate_human_approval,
     validate_manifest,
 )
-from run_adapter import AdapterError, bounded_run
+from run_adapter import AdapterError, AdapterOutputLimitError, AdapterTimeoutError, bounded_run
+
+
+class PilotUnknownOutcome(AdapterError):
+    """Request may have been processed without a usable response (never retried)."""
+
+
+class PilotInterrupted(BaseException):
+    """SIGINT/SIGTERM received; BaseException so it is never mistaken for a definite error."""
+
+
+# Adapter exit codes that prove a definite outcome. 0 = response; 2 = definite error
+# (CAPTURE_ADAPTER_ERROR: request not sent, HTTP != 200, invalid output, ...).
+# Every other code (4 UNKNOWN_OUTCOME, 3 unexpected exception, 1 uncaught crash,
+# negative = killed by signal) cannot prove the provider call did not happen and is
+# preserved conservatively as UNKNOWN_OUTCOME.
+DEFINITE_FAILURE_EXIT_CODES = frozenset({2})
+
+
+def _raise_interrupted(signum: int, _frame: Any) -> None:
+    raise PilotInterrupted(f"received signal {signum}")
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
@@ -160,6 +181,9 @@ def main() -> int:
     request_path = args.request if args.request.is_absolute() else root / args.request
 
     attempt_dir: Path | None = None
+    binding: dict[str, Any] = {}
+    adapter_started = False
+    previous_sigterm = signal.signal(signal.SIGTERM, _raise_interrupted)
     try:
         ensure_clean_worktree(root)
         manifest_bytes = read_regular_file_once(manifest_path, label="Pilot manifest")
@@ -196,6 +220,11 @@ def main() -> int:
         ensure_clean_worktree(root)
         output_root = ensure_output_root(root)
         attempt_number, attempt_dir = reserve_attempt(output_root, manifest_sha, max_runs)
+        binding = {
+            "package_sha256": manifest_sha,
+            "attempt": attempt_number,
+            "request_sha256": sha256_bytes(request_bytes),
+        }
 
         atomic_write_bytes(attempt_dir / "manifest.json", manifest_bytes)
         atomic_write_bytes(attempt_dir / "request.json", request_bytes)
@@ -217,6 +246,7 @@ def main() -> int:
         cwd = safe_adapter_cwd(root, manifest["adapter_cwd"])
         env = build_child_env(manifest["environment_allowlist"])
         ensure_clean_worktree(root)
+        adapter_started = True
         returncode, stdout, stderr, elapsed_ms = bounded_run(
             shlex.split(manifest["adapter_command"]),
             request_text=request_bytes.decode("utf-8"),
@@ -227,11 +257,14 @@ def main() -> int:
         )
         if returncode != 0:
             stderr_text_utf8 = stderr.encode("utf-8", errors="replace")
-            raise AdapterError(
-                f"adapter failed with return code {returncode}; "
+            detail = (
+                f"adapter exited with return code {returncode}; "
                 f"stderr_text_utf8_sha256={hashlib.sha256(stderr_text_utf8).hexdigest()}; "
                 f"stderr_text_utf8_bytes={len(stderr_text_utf8)}"
             )
+            if returncode not in DEFINITE_FAILURE_EXIT_CODES:
+                raise PilotUnknownOutcome(detail, returncode)
+            raise AdapterError(detail)
         try:
             response = json.loads(stdout)
         except json.JSONDecodeError as exc:
@@ -275,14 +308,38 @@ def main() -> int:
         )
         print(f"PILOT_EXECUTION_COMPLETED: {attempt_dir}")
         return 0
+    except (PilotUnknownOutcome, AdapterTimeoutError, AdapterOutputLimitError) as exc:
+        exit_code = exc.args[1] if isinstance(exc, PilotUnknownOutcome) and len(exc.args) > 1 else None
+        return _unknown_outcome(attempt_dir, binding, str(exc.args[0]), exit_code)
+    except (KeyboardInterrupt, PilotInterrupted) as exc:
+        reason = f"interrupted ({type(exc).__name__}: {exc})"
+        if adapter_started:
+            return _unknown_outcome(attempt_dir, binding, reason, None)
+        _write_result(attempt_dir, {"status": "FAILED", **binding, "error": reason + " before adapter start"})
+        print(f"PILOT_EXECUTION_ERROR: {reason} before adapter start", file=sys.stderr)
+        return 1
     except (PreflightError, AdapterError, OSError) as exc:
-        if attempt_dir is not None:
-            try:
-                atomic_write_json(attempt_dir / "result.json", {"status": "FAILED", "label": "PILOT — NOT EVIDENCE", "error": str(exc)})
-            except OSError:
-                pass
+        _write_result(attempt_dir, {"status": "FAILED", **binding, "error": str(exc)})
         print(f"PILOT_EXECUTION_ERROR: {exc}", file=sys.stderr)
         return 1
+    finally:
+        signal.signal(signal.SIGTERM, previous_sigterm)
+
+
+def _write_result(attempt_dir: Path | None, payload: dict[str, Any]) -> None:
+    if attempt_dir is None:
+        return
+    try:
+        atomic_write_json(attempt_dir / "result.json", {"label": "PILOT — NOT EVIDENCE", **payload})
+    except OSError:
+        pass
+
+
+def _unknown_outcome(attempt_dir: Path | None, binding: dict[str, Any], error: str, exit_code: int | None) -> int:
+    """Provider call may have happened: not COMPLETED, not FAILED, attempt stays consumed, no retry."""
+    _write_result(attempt_dir, {"status": "UNKNOWN_OUTCOME", **binding, "adapter_exit_code": exit_code, "error": error})
+    print(f"PILOT_EXECUTION_UNKNOWN_OUTCOME: {error}", file=sys.stderr)
+    return 4
 
 
 if __name__ == "__main__":

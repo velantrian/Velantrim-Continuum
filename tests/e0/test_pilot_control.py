@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -94,10 +95,20 @@ def validate_structure(manifest: dict):
     return preflight.validate_manifest(manifest, ROOT, check_git=False, check_authority_state=False)
 
 
-def make_package_and_activation(repo: Path, *, mutate_between: tuple[str, str] | None = None) -> tuple[Path, Path, str, str, str, str]:
+def make_package_and_activation(
+    repo: Path, *, mutate_between: tuple[str, str] | None = None,
+    adapter_command: str | None = None, timeout_seconds: int | None = None,
+    max_runs: int | None = None,
+) -> tuple[Path, Path, str, str, str, str]:
     request = repo.parent / "request.json"
     request.write_text("{}\n", encoding="utf-8")
     manifest = valid_manifest(repo, request_sha=sha256(request))
+    if adapter_command is not None:
+        manifest["adapter_command"] = adapter_command
+    if timeout_seconds is not None:
+        manifest["limits"]["timeout_seconds"] = timeout_seconds
+    if max_runs is not None:
+        manifest["limits"]["max_runs"] = max_runs
     package_dir = repo / "experiments/e0/pilot/packages"
     package_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = package_dir / "od-pilot-01.v0.1.json"
@@ -261,6 +272,151 @@ class ActivationIntegrationTests(unittest.TestCase):
         subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
         return repo
 
+    def run_synthetic_adapter(self, behavior: str, *, timeout_seconds: int = 2, send_signal: int | None = None):
+        """Only synthetic child processes in disposable Git clones; never a real Pilot."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            repo = self.clone_repo(temp)
+            counter = temp / "synthetic-provider-calls.txt"
+            child_source = (
+                "import sys, time\n"
+                "from pathlib import Path\n"
+                "counter = Path(sys.argv[1])\n"
+                "counter.write_text(str(int(counter.read_text()) + 1 if counter.exists() else 1))\n"
+                + behavior
+            )
+            command = shlex.join([sys.executable, "-c", child_source, str(counter)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, timeout_seconds=timeout_seconds,
+                max_runs=2,  # spare capacity proves no implicit second attempt
+            )
+            argv = [sys.executable, "scripts/e0/execute_pilot.py", "--repo-root", str(repo),
+                    "--manifest", str(manifest_path), "--request", str(request)]
+            if send_signal is None:
+                proc = subprocess.run(argv, cwd=repo, text=True, capture_output=True, check=False)
+            else:
+                popen = subprocess.Popen(argv, cwd=repo, text=True,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                deadline = time.monotonic() + 20
+                while not counter.exists() and popen.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(counter.exists(), "synthetic adapter never started")
+                popen.send_signal(send_signal)
+                out, err = popen.communicate(timeout=20)
+                proc = subprocess.CompletedProcess(argv, popen.returncode, out, err)
+            output_root = temp / preflight.PILOT_OUTPUT_DESTINATION
+            attempts = list(output_root.glob("*/attempt-*"))
+            self.assertEqual(len(attempts), 1, proc.stderr)
+            result_path = attempts[0] / "result.json"
+            self.assertTrue(result_path.is_file(), proc.stderr)
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            artifacts = {path.name for path in attempts[0].iterdir()}
+            return proc, result, artifacts, int(counter.read_text()), len(attempts)
+
+    def test_synthetic_adapter_success_completes_once(self):
+        proc, result, artifacts, calls, attempts = self.run_synthetic_adapter(
+            "import json; print(json.dumps({'ok': True}))\n"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(result["status"], "COMPLETED")
+        self.assertIn("PILOT_EXECUTION_COMPLETED", proc.stdout)
+        self.assertIn("response.json", artifacts)
+        self.assertIn("metrics.json", artifacts)
+        self.assertEqual((calls, attempts), (1, 1))
+
+    def test_synthetic_adapter_definite_error_is_failed(self):
+        proc, result, artifacts, calls, attempts = self.run_synthetic_adapter(
+            "sys.exit(2)\n"
+        )
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(result["status"], "FAILED")
+        self.assertIn("PILOT_EXECUTION_ERROR", proc.stderr)
+        self.assertNotIn("response.json", artifacts)
+        self.assertNotIn("metrics.json", artifacts)
+        self.assertEqual((calls, attempts), (1, 1))
+
+    def test_synthetic_adapter_exit_four_is_unknown_and_not_retried(self):
+        proc, result, artifacts, calls, attempts = self.run_synthetic_adapter(
+            "print('CAPTURE_ADAPTER_UNKNOWN_OUTCOME: timeout', file=sys.stderr)\n"
+            "sys.exit(4)\n"
+        )
+        self.assertEqual(proc.returncode, 4, proc.stderr)
+        self.assertEqual(result["status"], "UNKNOWN_OUTCOME")
+        self.assertEqual(result["adapter_exit_code"], 4)
+        self.assertIn("stderr_text_utf8_sha256=", result["error"])
+        self.assertNotIn("CAPTURE_ADAPTER_UNKNOWN_OUTCOME:", result["error"])
+        self.assertIn("PILOT_EXECUTION_UNKNOWN_OUTCOME", proc.stderr)
+        self.assertNotIn("response.json", artifacts)
+        self.assertNotIn("metrics.json", artifacts)
+        self.assertEqual((calls, attempts), (1, 1))
+
+    def test_synthetic_runner_timeout_is_unknown_and_not_retried(self):
+        proc, result, artifacts, calls, attempts = self.run_synthetic_adapter(
+            "time.sleep(30)\n", timeout_seconds=1
+        )
+        self.assertEqual(proc.returncode, 4, proc.stderr)
+        self.assertEqual(result["status"], "UNKNOWN_OUTCOME")
+        self.assertIsNone(result["adapter_exit_code"])
+        self.assertIn("adapter timeout", result["error"])
+        self.assertIn("PILOT_EXECUTION_UNKNOWN_OUTCOME", proc.stderr)
+        self.assertNotIn("response.json", artifacts)
+        self.assertNotIn("metrics.json", artifacts)
+        self.assertEqual((calls, attempts), (1, 1))
+
+    def assert_unknown_bound(self, proc, result, artifacts, calls, attempts):
+        self.assertEqual(proc.returncode, 4, proc.stderr)
+        self.assertEqual(result["status"], "UNKNOWN_OUTCOME")
+        self.assertIn("PILOT_EXECUTION_UNKNOWN_OUTCOME", proc.stderr)
+        self.assertNotIn("response.json", artifacts)
+        self.assertNotIn("metrics.json", artifacts)
+        self.assertIn("reservation.json", artifacts)  # attempt stays consumed
+        self.assertEqual(result["attempt"], 1)
+        self.assertRegex(result["package_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(result["request_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual((calls, attempts), (1, 1))
+
+    def test_synthetic_adapter_unexpected_exit_three_is_unknown(self):
+        out = self.run_synthetic_adapter("sys.exit(3)\n")
+        self.assert_unknown_bound(*out)
+        self.assertEqual(out[1]["adapter_exit_code"], 3)
+
+    def test_synthetic_adapter_uncaught_crash_is_unknown(self):
+        out = self.run_synthetic_adapter("raise RuntimeError('boom after send')\n")
+        self.assert_unknown_bound(*out)
+        self.assertEqual(out[1]["adapter_exit_code"], 1)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX signals")
+    def test_synthetic_adapter_killed_by_signal_is_unknown(self):
+        out = self.run_synthetic_adapter("import os, signal; os.kill(os.getpid(), signal.SIGKILL)\n")
+        self.assert_unknown_bound(*out)
+        self.assertLess(out[1]["adapter_exit_code"], 0)
+
+    def test_synthetic_adapter_output_cap_is_unknown(self):
+        out = self.run_synthetic_adapter("print('x' * 20000)\n")
+        self.assert_unknown_bound(*out)
+        self.assertIn("output exceeded", out[1]["error"])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX signals")
+    def test_sigterm_during_adapter_is_unknown_not_retried(self):
+        import signal
+        out = self.run_synthetic_adapter("time.sleep(30)\n", timeout_seconds=60, send_signal=signal.SIGTERM)
+        self.assert_unknown_bound(*out)
+        self.assertIn("interrupted", out[1]["error"])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX signals")
+    def test_sigint_during_adapter_is_unknown_not_retried(self):
+        import signal
+        out = self.run_synthetic_adapter("time.sleep(30)\n", timeout_seconds=60, send_signal=signal.SIGINT)
+        self.assert_unknown_bound(*out)
+        self.assertIn("KeyboardInterrupt", out[1]["error"])
+
+    def test_definite_failure_result_carries_attempt_binding(self):
+        proc, result, *_ = self.run_synthetic_adapter("sys.exit(2)\n")
+        self.assertEqual(result["status"], "FAILED")
+        self.assertEqual(result["attempt"], 1)
+        self.assertRegex(result["package_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(result["request_sha256"], r"^[0-9a-f]{64}$")
+
     def test_committed_activation_package_reaches_harmless_adapter(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -362,7 +518,7 @@ class RunAdapterTests(unittest.TestCase):
         self.assertIn('"ok": true', output)
 
     def test_adapter_timeout_fails(self):
-        with self.assertRaisesRegex(run_adapter.AdapterError, "timeout"):
+        with self.assertRaisesRegex(run_adapter.AdapterTimeoutError, "timeout"):
             self.bounded("import time; time.sleep(5); print('{}')", timeout=1)
 
     def test_adapter_output_cap_fails(self):
