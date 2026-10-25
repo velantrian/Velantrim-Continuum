@@ -272,7 +272,7 @@ class ActivationIntegrationTests(unittest.TestCase):
         subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
         return repo
 
-    def run_synthetic_adapter(self, behavior: str, *, timeout_seconds: int = 2):
+    def run_synthetic_adapter(self, behavior: str, *, timeout_seconds: int = 2, send_signal: int | None = None):
         """Only synthetic child processes in disposable Git clones; never a real Pilot."""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -290,11 +290,20 @@ class ActivationIntegrationTests(unittest.TestCase):
                 repo, adapter_command=command, timeout_seconds=timeout_seconds,
                 max_runs=2,  # spare capacity proves no implicit second attempt
             )
-            proc = subprocess.run(
-                [sys.executable, "scripts/e0/execute_pilot.py", "--repo-root", str(repo),
-                 "--manifest", str(manifest_path), "--request", str(request)],
-                cwd=repo, text=True, capture_output=True, check=False,
-            )
+            argv = [sys.executable, "scripts/e0/execute_pilot.py", "--repo-root", str(repo),
+                    "--manifest", str(manifest_path), "--request", str(request)]
+            if send_signal is None:
+                proc = subprocess.run(argv, cwd=repo, text=True, capture_output=True, check=False)
+            else:
+                popen = subprocess.Popen(argv, cwd=repo, text=True,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                deadline = time.monotonic() + 20
+                while not counter.exists() and popen.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(counter.exists(), "synthetic adapter never started")
+                popen.send_signal(send_signal)
+                out, err = popen.communicate(timeout=20)
+                proc = subprocess.CompletedProcess(argv, popen.returncode, out, err)
             output_root = temp / preflight.PILOT_OUTPUT_DESTINATION
             attempts = list(output_root.glob("*/attempt-*"))
             self.assertEqual(len(attempts), 1, proc.stderr)
@@ -353,6 +362,60 @@ class ActivationIntegrationTests(unittest.TestCase):
         self.assertNotIn("response.json", artifacts)
         self.assertNotIn("metrics.json", artifacts)
         self.assertEqual((calls, attempts), (1, 1))
+
+    def assert_unknown_bound(self, proc, result, artifacts, calls, attempts):
+        self.assertEqual(proc.returncode, 4, proc.stderr)
+        self.assertEqual(result["status"], "UNKNOWN_OUTCOME")
+        self.assertIn("PILOT_EXECUTION_UNKNOWN_OUTCOME", proc.stderr)
+        self.assertNotIn("response.json", artifacts)
+        self.assertNotIn("metrics.json", artifacts)
+        self.assertIn("reservation.json", artifacts)  # attempt stays consumed
+        self.assertEqual(result["attempt"], 1)
+        self.assertRegex(result["package_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(result["request_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual((calls, attempts), (1, 1))
+
+    def test_synthetic_adapter_unexpected_exit_three_is_unknown(self):
+        out = self.run_synthetic_adapter("sys.exit(3)\n")
+        self.assert_unknown_bound(*out)
+        self.assertEqual(out[1]["adapter_exit_code"], 3)
+
+    def test_synthetic_adapter_uncaught_crash_is_unknown(self):
+        out = self.run_synthetic_adapter("raise RuntimeError('boom after send')\n")
+        self.assert_unknown_bound(*out)
+        self.assertEqual(out[1]["adapter_exit_code"], 1)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX signals")
+    def test_synthetic_adapter_killed_by_signal_is_unknown(self):
+        out = self.run_synthetic_adapter("import os, signal; os.kill(os.getpid(), signal.SIGKILL)\n")
+        self.assert_unknown_bound(*out)
+        self.assertLess(out[1]["adapter_exit_code"], 0)
+
+    def test_synthetic_adapter_output_cap_is_unknown(self):
+        out = self.run_synthetic_adapter("print('x' * 20000)\n")
+        self.assert_unknown_bound(*out)
+        self.assertIn("output exceeded", out[1]["error"])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX signals")
+    def test_sigterm_during_adapter_is_unknown_not_retried(self):
+        import signal
+        out = self.run_synthetic_adapter("time.sleep(30)\n", timeout_seconds=60, send_signal=signal.SIGTERM)
+        self.assert_unknown_bound(*out)
+        self.assertIn("interrupted", out[1]["error"])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX signals")
+    def test_sigint_during_adapter_is_unknown_not_retried(self):
+        import signal
+        out = self.run_synthetic_adapter("time.sleep(30)\n", timeout_seconds=60, send_signal=signal.SIGINT)
+        self.assert_unknown_bound(*out)
+        self.assertIn("KeyboardInterrupt", out[1]["error"])
+
+    def test_definite_failure_result_carries_attempt_binding(self):
+        proc, result, *_ = self.run_synthetic_adapter("sys.exit(2)\n")
+        self.assertEqual(result["status"], "FAILED")
+        self.assertEqual(result["attempt"], 1)
+        self.assertRegex(result["package_sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(result["request_sha256"], r"^[0-9a-f]{64}$")
 
     def test_committed_activation_package_reaches_harmless_adapter(self):
         with tempfile.TemporaryDirectory() as temp_dir:

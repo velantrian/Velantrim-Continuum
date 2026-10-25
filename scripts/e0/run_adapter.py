@@ -25,6 +25,11 @@ class AdapterTimeoutError(AdapterError):
     pass
 
 
+class AdapterOutputLimitError(AdapterError):
+    """Child output exceeded the cap; a provider response may already have been received."""
+    pass
+
+
 def terminate_process_tree(proc: subprocess.Popen[str]) -> None:
     """Terminate the adapter process tree with best available platform semantics."""
     if os.name == "posix":
@@ -127,7 +132,7 @@ def bounded_run(
                 if time.monotonic() >= deadline:
                     raise AdapterTimeoutError(f"adapter timeout after {timeout_seconds}s")
                 if stdout_file.tell() > max_output_bytes or stderr_file.tell() > max_output_bytes:
-                    raise AdapterError(f"adapter output exceeded {max_output_bytes} bytes")
+                    raise AdapterOutputLimitError(f"adapter output exceeded {max_output_bytes} bytes")
                 time.sleep(0.02)
         finally:
             # Always clean the process group/session, even if the immediate adapter exited,
@@ -138,7 +143,7 @@ def bounded_run(
         if writer_error and proc.returncode == 0:
             raise AdapterError(f"adapter stdin write failed: {writer_error[0]}")
         if stdout_file.tell() > max_output_bytes or stderr_file.tell() > max_output_bytes:
-            raise AdapterError(f"adapter output exceeded {max_output_bytes} bytes")
+            raise AdapterOutputLimitError(f"adapter output exceeded {max_output_bytes} bytes")
         stdout_file.seek(0)
         stderr_file.seek(0)
         stdout = stdout_file.read(max_output_bytes + 1).decode("utf-8", errors="replace")
