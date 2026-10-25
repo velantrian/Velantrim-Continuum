@@ -61,7 +61,7 @@ This document records the owner's provider/model selection for the first Continu
             "settings": {"reasoning": {"effort": "xhigh"}, "max_tokens": 24000}},
   "credentials": {"profile": "openrouter-pilot", "scope": "inference only; key-level spend limit <= USD 5.00 recommended",
                   "environment_variables": ["OPENROUTER_API_KEY"]},
-  "adapter_command": "python3 scripts/e0/adapters/openrouter_capture_adapter.py  (PENDING_IMPLEMENTATION — file does not exist yet)",
+  "adapter_command": "python3 scripts/e0/adapters/openrouter_capture_adapter.py  (IMPLEMENTED as offline-tested draft; PENDING AUTHORIZATION — not an execution entrypoint)",
   "adapter_cwd": ".",
   "environment_allowlist": ["OPENROUTER_API_KEY"],
   "output_destination": ".velantrim-continuum-pilot-runs",
@@ -121,3 +121,14 @@ Contact/owner login: `PENDING_OWNER`.
 ## 8. Authority remains closed
 
 `experiment_0_pilot_status = NOT_AUTHORIZED`; `experiment_0_pilot_authorization = null`; `OD-PILOT-01 = DRAFT — NOT ADOPTED`; Evidence Lock `NOT_CREATED`. No API completion was made while preparing this file. This document is not package A and does not authorize `scripts/e0/execute_pilot.py`.
+
+## Adapter exit codes (`scripts/e0/adapters/openrouter_capture_adapter.py`)
+
+| Exit | stderr prefix | Meaning |
+|---|---|---|
+| 0 | — | one validated e0-state object printed to stdout |
+| 2 | `CAPTURE_ADAPTER_ERROR:` | definite failure (bad request/config, request not sent, HTTP != 200, invalid/oversized output, schema violation) |
+| 3 | `CAPTURE_ADAPTER_ERROR: unexpected <Type>` | unexpected internal exception (fail closed) |
+| 4 | `CAPTURE_ADAPTER_UNKNOWN_OUTCOME:` | timeout or connection lost **after send**: the provider may have processed/billed the call; outcome unknown. Never retried automatically |
+
+Single attempt, no retries in all cases. Note: `scripts/e0/execute_pilot.py` currently treats every non-zero exit the same; distinguishing exit 4 there is a follow-up.
