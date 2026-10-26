@@ -25,6 +25,7 @@ from preflight_pilot import (
     validate_manifest,
 )
 from run_adapter import AdapterError, AdapterOutputLimitError, AdapterTimeoutError, bounded_run
+from classify_attempts import unknown_outcome_attempts
 
 
 class PilotUnknownOutcome(AdapterError):
@@ -133,6 +134,12 @@ def reserve_attempt(output_root: Path, package_hash: str, max_runs: int) -> tupl
     package_root.mkdir(mode=0o700, exist_ok=True)
     if package_root.is_symlink() or package_root.resolve() != package_root:
         raise PreflightError("Pilot package root must remain a real directory")
+    unknown = unknown_outcome_attempts(package_root)
+    if unknown:
+        names = ", ".join(Path(e["attempt_dir"]).name for e in unknown)
+        raise PreflightError(
+            f"Pilot refuses a new attempt: unresolved UNKNOWN_OUTCOME in {names}; "
+            "the provider may have processed it, an owner must resolve it out of band")
     for attempt in range(1, max_runs + 1):
         attempt_dir = package_root / f"attempt-{attempt:03d}"
         try:

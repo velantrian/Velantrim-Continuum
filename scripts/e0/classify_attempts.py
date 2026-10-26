@@ -56,10 +56,21 @@ def classify_attempt(attempt_dir: Path) -> dict[str, Any]:
             return entry
         entry.update(classification=status, outcome=status)
         problems = []
-        if result.get("attempt") is not None and number is not None and result.get("attempt") != number:
-            problems.append("result attempt does not match directory")
-        if reservation and result.get("package_sha256") not in (None, reservation.get("package_sha256")):
-            problems.append("result package_sha256 does not match reservation")
+        # Strict binding: a result counts only if it names exactly this attempt and this package,
+        # and a readable reservation for the same attempt/package exists. Missing fields are not
+        # treated as "no evidence of mismatch".
+        package_hash = attempt_dir.parent.name
+        if number is None or result.get("attempt") != number:
+            problems.append("result attempt missing or does not match directory")
+        if not isinstance(result.get("package_sha256"), str) or result.get("package_sha256") != package_hash:
+            problems.append("result package_sha256 missing or does not match package directory")
+        if reservation is None:
+            problems.append("reservation.json missing or unreadable")
+        else:
+            if reservation.get("package_sha256") != result.get("package_sha256"):
+                problems.append("result package_sha256 does not match reservation")
+            if reservation.get("attempt") is not None and reservation.get("attempt") != number:
+                problems.append("reservation attempt does not match directory")
         if problems:
             entry.update(classification="BINDING_MISMATCH", outcome="UNKNOWN_OUTCOME", problems=problems)
         return entry
@@ -78,6 +89,13 @@ def classify_attempt(attempt_dir: Path) -> dict[str, Any]:
 
 def classify_package(package_root: Path) -> list[dict[str, Any]]:
     return [classify_attempt(path) for path in sorted(package_root.glob("attempt-*")) if path.is_dir()]
+
+
+def unknown_outcome_attempts(package_root: Path) -> list[dict[str, Any]]:
+    """Attempts whose provider-side outcome is unknown. While any exist, no new attempt may start."""
+    if not package_root.is_dir():
+        return []
+    return [e for e in classify_package(package_root) if e["outcome"] == "UNKNOWN_OUTCOME"]
 
 
 def main() -> int:
