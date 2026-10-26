@@ -28,6 +28,7 @@ def load_module(name: str, path: Path):
 
 
 preflight = load_module("preflight_pilot", SCRIPTS / "preflight_pilot.py")
+classify = load_module("classify_attempts", SCRIPTS / "classify_attempts.py")
 run_adapter = load_module("run_adapter", SCRIPTS / "run_adapter.py")
 execute_pilot = load_module("execute_pilot", SCRIPTS / "execute_pilot.py")
 
@@ -490,6 +491,76 @@ class ActivationIntegrationTests(unittest.TestCase):
             subprocess.run(["git", "commit", "--amend", "-qm", "activate wrong hash"], cwd=repo, check=True)
             with self.assertRaisesRegex(preflight.PreflightError, "does not match canonical owner-approved package binding"):
                 preflight.validate_canonical_authorization(repo, manifest=manifest, manifest_path=manifest_path, manifest_sha256=sha256(manifest_path))
+
+    def test_supervisor_sigkill_leaves_orphan_classified_unknown_and_spent(self):
+        """SIGKILL of execute_pilot itself: no result.json can be written. The next look must
+        classify the attempt as UNKNOWN_OUTCOME (spent), and a later explicit run takes the next
+        attempt slot instead of reusing or silently retrying the orphan."""
+        import signal as _signal
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            repo = self.clone_repo(temp)
+            counter = temp / "calls.txt"
+            go = temp / "go"
+            child = ("import sys, time\nfrom pathlib import Path\nc = Path(sys.argv[1])\n"
+                     "c.write_text(str(int(c.read_text()) + 1 if c.exists() else 1))\n"
+                     "g = Path(sys.argv[2])\n"
+                     "while not g.exists(): time.sleep(0.05)\n"
+                     "print('{\"ok\": true}')\n")
+            command = shlex.join([sys.executable, "-c", child, str(counter), str(go)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, timeout_seconds=30, max_runs=2)
+            argv = [sys.executable, "scripts/e0/execute_pilot.py", "--repo-root", str(repo),
+                    "--manifest", str(manifest_path), "--request", str(request)]
+            popen = subprocess.Popen(argv, cwd=repo, text=True, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, start_new_session=True)
+            deadline = time.monotonic() + 20
+            while not counter.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(counter.exists(), "synthetic adapter never started")
+            os.killpg(popen.pid, _signal.SIGKILL)  # supervisor and adapter die together
+            popen.communicate(timeout=20)
+            package_root = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+            first = classify.classify_package(package_root)
+            self.assertEqual(len(first), 1)
+            self.assertEqual(first[0]["classification"], "ORPHANED_RESERVATION")
+            self.assertEqual(first[0]["outcome"], "UNKNOWN_OUTCOME")
+            self.assertTrue(first[0]["spent"])
+            self.assertFalse((package_root / "attempt-001" / "result.json").exists())
+            cli = subprocess.run([sys.executable, str(SCRIPTS / "classify_attempts.py"), str(package_root)],
+                                 text=True, capture_output=True, check=False)
+            self.assertEqual(cli.returncode, 4, cli.stderr)
+            self.assertEqual(int(counter.read_text()), 1)
+            # Explicit operator re-run: allowed only within max_runs, takes attempt-002.
+            go.write_text("1")
+            second_run = subprocess.run(argv, cwd=repo, text=True, capture_output=True, check=False)
+            self.assertEqual(second_run.returncode, 0, second_run.stderr)
+            after = {e["attempt"]: e for e in classify.classify_package(package_root)}
+            self.assertEqual(after[1]["outcome"], "UNKNOWN_OUTCOME")  # orphan never rewritten
+            self.assertEqual(after[2]["outcome"], "COMPLETED")
+            self.assertEqual(int(counter.read_text()), 2)
+            third = subprocess.run(argv, cwd=repo, text=True, capture_output=True, check=False)
+            self.assertNotEqual(third.returncode, 0)
+            self.assertIn("max_runs exhausted", third.stderr)
+            self.assertEqual(int(counter.read_text()), 2)
+
+    def test_classifier_reservation_incomplete_and_corrupt_result(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pkg = Path(temp_dir)
+            (pkg / "attempt-001").mkdir()
+            (pkg / "attempt-002").mkdir()
+            (pkg / "attempt-002" / "reservation.json").write_text('{"package_sha256": "a"}')
+            (pkg / "attempt-002" / "result.json").write_text('{"status": "COMPL')
+            (pkg / "attempt-003").mkdir()
+            (pkg / "attempt-003" / "reservation.json").write_text('{"package_sha256": "a"}')
+            (pkg / "attempt-003" / "result.json").write_text('{"status": "COMPLETED", "attempt": 1}')
+            got = {e["attempt"]: e for e in classify.classify_package(pkg)}
+            self.assertEqual(got[1]["outcome"], "NOT_STARTED")
+            self.assertTrue(got[1]["spent"])
+            self.assertEqual(got[2]["classification"], "RESULT_UNREADABLE")
+            self.assertEqual(got[2]["outcome"], "UNKNOWN_OUTCOME")
+            self.assertEqual(got[3]["classification"], "BINDING_MISMATCH")
+            self.assertEqual(got[3]["outcome"], "UNKNOWN_OUTCOME")
 
 
 class RunAdapterTests(unittest.TestCase):
