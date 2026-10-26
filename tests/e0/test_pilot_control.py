@@ -531,18 +531,17 @@ class ActivationIntegrationTests(unittest.TestCase):
                                  text=True, capture_output=True, check=False)
             self.assertEqual(cli.returncode, 4, cli.stderr)
             self.assertEqual(int(counter.read_text()), 1)
-            # Explicit operator re-run: allowed only within max_runs, takes attempt-002.
+            # A new attempt must never start while an outcome is unknown: the provider may have
+            # processed attempt-001. The re-run is refused before reserving a slot or launching.
             go.write_text("1")
             second_run = subprocess.run(argv, cwd=repo, text=True, capture_output=True, check=False)
-            self.assertEqual(second_run.returncode, 0, second_run.stderr)
+            self.assertNotEqual(second_run.returncode, 0)
+            self.assertIn("unresolved UNKNOWN_OUTCOME", second_run.stderr)
+            self.assertFalse((package_root / "attempt-002").exists())
             after = {e["attempt"]: e for e in classify.classify_package(package_root)}
+            self.assertEqual(set(after), {1})
             self.assertEqual(after[1]["outcome"], "UNKNOWN_OUTCOME")  # orphan never rewritten
-            self.assertEqual(after[2]["outcome"], "COMPLETED")
-            self.assertEqual(int(counter.read_text()), 2)
-            third = subprocess.run(argv, cwd=repo, text=True, capture_output=True, check=False)
-            self.assertNotEqual(third.returncode, 0)
-            self.assertIn("max_runs exhausted", third.stderr)
-            self.assertEqual(int(counter.read_text()), 2)
+            self.assertEqual(int(counter.read_text()), 1)
 
     def test_classifier_reservation_incomplete_and_corrupt_result(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -561,6 +560,55 @@ class ActivationIntegrationTests(unittest.TestCase):
             self.assertEqual(got[2]["outcome"], "UNKNOWN_OUTCOME")
             self.assertEqual(got[3]["classification"], "BINDING_MISMATCH")
             self.assertEqual(got[3]["outcome"], "UNKNOWN_OUTCOME")
+
+    def test_classifier_completed_requires_full_binding(self):
+        """COMPLETED counts only with attempt + package_sha256 present and matching the directory
+        and a readable reservation; any missing field is a BINDING_MISMATCH (UNKNOWN_OUTCOME)."""
+        h = "a" * 64
+        good = {"status": "COMPLETED", "attempt": 1, "package_sha256": h}
+        cases = {
+            "ok": (good, {"package_sha256": h, "attempt": 1}, "COMPLETED"),
+            "no_attempt": ({"status": "COMPLETED", "package_sha256": h}, {"package_sha256": h}, "BINDING_MISMATCH"),
+            "no_hash": ({"status": "COMPLETED", "attempt": 1}, {"package_sha256": h}, "BINDING_MISMATCH"),
+            "other_pkg": ({**good, "package_sha256": "b" * 64}, {"package_sha256": "b" * 64}, "BINDING_MISMATCH"),
+            "no_reservation": (good, None, "BINDING_MISMATCH"),
+            "bad_reservation": (good, "{", "BINDING_MISMATCH"),
+            "res_attempt": (good, {"package_sha256": h, "attempt": 2}, "BINDING_MISMATCH"),
+        }
+        for label, (result, reservation, expected) in cases.items():
+            with self.subTest(label), tempfile.TemporaryDirectory() as temp_dir:
+                att = Path(temp_dir) / h / "attempt-001"
+                att.mkdir(parents=True)
+                (att / "result.json").write_text(json.dumps(result))
+                if isinstance(reservation, dict):
+                    (att / "reservation.json").write_text(json.dumps(reservation))
+                elif isinstance(reservation, str):
+                    (att / "reservation.json").write_text(reservation)
+                got = classify.classify_attempt(att)
+                self.assertEqual(got["classification"], expected, got)
+                if expected != "COMPLETED":
+                    self.assertEqual(got["outcome"], "UNKNOWN_OUTCOME")
+
+    def test_reserve_attempt_refuses_while_outcome_unknown(self):
+        h = "c" * 64
+        for status in ("UNKNOWN_OUTCOME", None):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir).resolve()
+                att = root / h / "attempt-001"
+                att.mkdir(parents=True)
+                (att / "reservation.json").write_text(json.dumps({"package_sha256": h, "attempt": 1}))
+                if status:
+                    (att / "result.json").write_text(json.dumps({"status": status, "attempt": 1, "package_sha256": h}))
+                with self.assertRaisesRegex(execute_pilot.PreflightError, "unresolved UNKNOWN_OUTCOME"):
+                    execute_pilot.reserve_attempt(root, h, 3)
+                self.assertFalse((root / h / "attempt-002").exists())
+        with tempfile.TemporaryDirectory() as temp_dir:  # definite FAILED still allows the next slot
+            root = Path(temp_dir).resolve()
+            att = root / h / "attempt-001"
+            att.mkdir(parents=True)
+            (att / "reservation.json").write_text(json.dumps({"package_sha256": h, "attempt": 1}))
+            (att / "result.json").write_text(json.dumps({"status": "FAILED", "attempt": 1, "package_sha256": h}))
+            self.assertEqual(execute_pilot.reserve_attempt(root, h, 3)[0], 2)
 
 
 class RunAdapterTests(unittest.TestCase):

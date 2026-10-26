@@ -15,6 +15,8 @@ Classification per attempt directory:
                          reservation was written, the adapter is only started afterwards
   RESULT_UNREADABLE   -> outcome UNKNOWN_OUTCOME (corrupt/partial result.json)
 Every attempt directory counts as spent regardless of outcome (max_runs protocol unchanged).
+COMPLETED requires a full binding (attempt + package_sha256 present and matching, readable
+reservation); execute_pilot refuses to reserve a new attempt while any outcome is UNKNOWN.
 Artifact integrity here is not evidence that a provider did or did not process the request.
 """
 from __future__ import annotations
