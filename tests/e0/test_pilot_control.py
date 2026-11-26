@@ -415,10 +415,10 @@ class ActivationIntegrationTests(unittest.TestCase):
                 # Allow the old unprotected implementation to reach attempt-002
                 # while the first reservation is deliberately not yet written.
                 package_root = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
-                deadline = time.monotonic() + 1.3
-                while time.monotonic() < deadline:
-                    if (package_root / "attempt-002").exists() or list(launches.iterdir()):
-                        break
+                deadline = time.monotonic() + 3.0
+                # Do not stop at attempt-002: the older implementation creates
+                # its slot before the fake adapter process has started.
+                while not list(launches.iterdir()) and second.poll() is None and time.monotonic() < deadline:
                     time.sleep(.02)
                 second_slot = (package_root / "attempt-002").exists()
                 launched_before_first_write = bool(list(launches.iterdir()))
@@ -456,20 +456,27 @@ class ActivationIntegrationTests(unittest.TestCase):
                         proc.kill()
                     proc.communicate()
 
-    @unittest.skipUnless(os.name == "posix", "POSIX two-process reservation race")
-    def test_prewrite_reservation_race_passes_on_fixed_branch(self):
-        result = self._prewrite_race_probe(baseline_sha=None)
+    def assert_prewrite_reservation_is_protected(self, result: dict) -> None:
+        """One acceptance assertion shared by patched and historical code."""
         self.assertFalse(result["second_slot"], result)
         self.assertFalse(result["launched_before_first_write"], result)
         self.assertEqual(result["adapter_calls"], 1, result)
         self.assertNotEqual(result["second_rc"], 0, result)
         self.assertIn("unresolved UNKNOWN_OUTCOME", result["second_stderr"], result)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX two-process reservation race")
+    def test_prewrite_reservation_race_passes_on_fixed_branch(self):
+        result = self._prewrite_race_probe(baseline_sha=None)
+        self.assert_prewrite_reservation_is_protected(result)
         print("PREWRITE_RACE fixed HEAD: PASS (second adapter never ran)")
 
     @unittest.skipUnless(os.name == "posix", "POSIX two-process reservation race")
     def test_prewrite_reservation_race_reproduces_failure_on_old_main(self):
         old_main = "51d8ce16f3b13816165db0aa0adc5352feecf136"
         result = self._prewrite_race_probe(baseline_sha=old_main)
+        # The same acceptance assertion must fail against historical main.
+        with self.assertRaises(AssertionError):
+            self.assert_prewrite_reservation_is_protected(result)
         self.assertTrue(result["second_slot"], result)
         self.assertTrue(result["launched_before_first_write"], result)
         self.assertEqual(result["adapter_calls"], 2, result)
