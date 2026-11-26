@@ -759,6 +759,71 @@ class ActivationIntegrationTests(unittest.TestCase):
             self.assertEqual(after[1]["outcome"], "UNKNOWN_OUTCOME")  # orphan never rewritten
             self.assertEqual(int(counter.read_text()), 1)
 
+    def test_legacy_admission_requires_no_protocol_and_no_terminal_seal(self):
+        """Four isolated synthetic cases: three blocked, genuine legacy allowed."""
+        cases = (
+            ("unknown_version", "terminal-seal-v999", False, True),
+            ("explicit_null", None, False, True),
+            ("orphan_seal", "ABSENT", True, True),
+            ("valid_legacy", "ABSENT", False, False),
+        )
+        for name, protocol, keep_seal, blocked in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as temp_dir:
+                temp = Path(temp_dir)
+                repo = self.clone_repo(temp)
+                counter = temp / "adapter-calls.txt"
+                child = (
+                    "import json,sys\n"
+                    "from pathlib import Path\n"
+                    "p=Path(sys.argv[1]); p.write_text(str(int(p.read_text()) + 1 if p.exists() else 1))\n"
+                    "print(json.dumps({'ok': True}))\n"
+                )
+                command = shlex.join([sys.executable, "-c", child, str(counter)])
+                manifest_path, request, *_ = make_package_and_activation(
+                    repo, adapter_command=command, max_runs=2,
+                )
+                argv = [
+                    sys.executable, "scripts/e0/execute_pilot.py",
+                    "--repo-root", str(repo),
+                    "--manifest", str(manifest_path),
+                    "--request", str(request),
+                ]
+                first = subprocess.run(
+                    argv, cwd=repo, capture_output=True, text=True,
+                    timeout=25, check=False,
+                )
+                self.assertEqual(first.returncode, 0, first.stderr)
+                self.assertEqual(int(counter.read_text()), 1)
+                package = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+                att = package / "attempt-001"
+                self.assertEqual(
+                    json.loads((att / "result.json").read_text())["status"], "COMPLETED")
+                reservation_path = att / "reservation.json"
+                reservation = json.loads(reservation_path.read_text())
+                reservation.pop("journal_protocol")
+                if protocol != "ABSENT":
+                    reservation["journal_protocol"] = protocol
+                reservation_path.write_text(json.dumps(reservation) + "\n")
+                seal_path = att / "terminal-seal.json"
+                if not keep_seal:
+                    seal_path.unlink()
+                else:
+                    self.assertTrue(seal_path.is_file())
+
+                second = subprocess.run(
+                    argv, cwd=repo, capture_output=True, text=True,
+                    timeout=25, check=False,
+                )
+                if blocked:
+                    self.assertNotEqual(second.returncode, 0, second.stderr)
+                    self.assertIn("requires separate owner review", second.stderr)
+                    self.assertFalse((package / "attempt-002").exists())
+                    self.assertEqual(int(counter.read_text()), 1)
+                else:
+                    self.assertEqual(second.returncode, 0, second.stderr)
+                    self.assertTrue((package / "attempt-002" / "reservation.json").is_file())
+                    self.assertEqual(int(counter.read_text()), 2)
+
     def test_terminal_seal_is_not_automatic_relaunch_permission(self):
         """Even intact seal bytes cannot prove that directory fsync succeeded."""
         h = "c" * 64
