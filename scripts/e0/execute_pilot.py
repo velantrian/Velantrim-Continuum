@@ -254,12 +254,36 @@ def reserve_attempt(
                 raise PreflightError(
                     f"Pilot refuses a new attempt: reservation.json unreadable "
                     f"in {prior_dir.name}: {exc}") from exc
-            if reservation.get("journal_protocol") == TERMINAL_SEAL_PROTOCOL:
+            # Presence, not value, opts out of legacy handling. Explicit
+            # null, unknown/future versions and v1 must all fail closed.
+            if "journal_protocol" in reservation:
+                protocol = reservation["journal_protocol"]
+                kind = (
+                    "v1 reservation" if protocol == TERMINAL_SEAL_PROTOCOL
+                    else "explicit journal_protocol"
+                )
                 raise PreflightError(
-                    f"Pilot refuses a new attempt: v1 reservation in "
+                    f"Pilot refuses a new attempt: {kind} in "
                     f"{prior_dir.name} requires separate owner review; "
                     "unresolved UNKNOWN_OUTCOME cannot be excluded")
-            # Historical journals preserve the existing legacy classification.
+            # A seal without a protocol header is not proof of a legacy
+            # journal. lstat also detects dangling symlinks and fails closed
+            # on errors inspecting the marker.
+            seal_path = prior_dir / "terminal-seal.json"
+            try:
+                seal_path.lstat()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: cannot inspect terminal-seal.json "
+                    f"in {prior_dir.name}: {exc}") from exc
+            else:
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: terminal-seal.json in "
+                    f"{prior_dir.name} requires separate owner review; "
+                    "legacy journal cannot be established")
+            # Historical rules apply only when BOTH markers are absent.
             legacy = classify_attempt(prior_dir, reservation_override=reservation)
             if legacy["outcome"] == "UNKNOWN_OUTCOME":
                 raise PreflightError(
