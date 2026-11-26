@@ -32,6 +32,7 @@ from typing import Any
 
 KNOWN_RESULT_STATUSES = {"COMPLETED", "FAILED", "UNKNOWN_OUTCOME"}
 TERMINAL_SEAL_PROTOCOL = "terminal-seal-v1"
+_RESERVATION_NOT_SUPPLIED = object()
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -42,7 +43,11 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def classify_attempt(attempt_dir: Path) -> dict[str, Any]:
+def classify_attempt(
+    attempt_dir: Path,
+    *,
+    reservation_override: dict[str, Any] | object = _RESERVATION_NOT_SUPPLIED,
+) -> dict[str, Any]:
     name = attempt_dir.name
     try:
         number = int(name.split("-", 1)[1])
@@ -51,7 +56,14 @@ def classify_attempt(attempt_dir: Path) -> dict[str, Any]:
     entry: dict[str, Any] = {"attempt_dir": str(attempt_dir), "attempt": number, "spent": True}
     reservation_path = attempt_dir / "reservation.json"
     result_path = attempt_dir / "result.json"
-    reservation = _read_json(reservation_path) if reservation_path.is_file() else None
+    # A supervisor already holding package flock can supply the reservation
+    # read once during admission. Standalone read-only classification remains
+    # backwards compatible with its original file-reading behavior.
+    reservation = (
+        (_read_json(reservation_path) if reservation_path.is_file() else None)
+        if reservation_override is _RESERVATION_NOT_SUPPLIED
+        else reservation_override
+    )
     if result_path.exists():
         result = _read_json(result_path)
         status = result.get("status") if result else None
