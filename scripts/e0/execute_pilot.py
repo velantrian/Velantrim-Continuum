@@ -260,7 +260,7 @@ def reserve_attempt(
                     f"{prior_dir.name} requires separate owner review; "
                     "unresolved UNKNOWN_OUTCOME cannot be excluded")
             # Historical journals preserve the existing legacy classification.
-            legacy = classify_attempt(prior_dir)
+            legacy = classify_attempt(prior_dir, reservation_override=reservation)
             if legacy["outcome"] == "UNKNOWN_OUTCOME":
                 raise PreflightError(
                     f"Pilot refuses a new attempt: unresolved UNKNOWN_OUTCOME "
