@@ -26,7 +26,7 @@ from preflight_pilot import (
     validate_manifest,
 )
 from run_adapter import AdapterError, AdapterOutputLimitError, AdapterTimeoutError, bounded_run
-from classify_attempts import unknown_outcome_attempts
+from classify_attempts import classify_package, unknown_outcome_attempts
 
 
 class PilotUnknownOutcome(AdapterError):
@@ -217,6 +217,16 @@ def package_reservation_lock(package_root: Path):
         os.close(fd)
 
 
+def _read_reservation_for_gate(attempt_dir: Path) -> dict[str, Any] | None:
+    """Fail-closed read for the bounded reserve gate, inside package flock."""
+    path = attempt_dir / "reservation.json"
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def reserve_attempt(
     output_root: Path,
     package_hash: str,
@@ -244,6 +254,23 @@ def reserve_attempt(
             raise PreflightError(
                 f"Pilot refuses a new attempt: unresolved UNKNOWN_OUTCOME in {names}; "
                 "the provider may have processed it, an owner must resolve it out of band")
+        # A matching terminal-seal file proves byte consistency but NOT that
+        # fsync of its directory succeeded. If that fsync raised, the caller
+        # returned 4 even though the seal remains visible. Another process
+        # cannot distinguish that case from a fully synced seal by reading
+        # the journal. For v1, any terminal result consumes the package's
+        # automatic continuation right. Owner must independently resolve it.
+        terminal = [
+            e for e in classify_package(package_root)
+            if e["outcome"] in {"COMPLETED", "FAILED"}
+            and (reservation := _read_reservation_for_gate(Path(e["attempt_dir"])))
+            and reservation.get("journal_protocol") == TERMINAL_SEAL_PROTOCOL
+        ]
+        if terminal:
+            names = ", ".join(Path(e["attempt_dir"]).name for e in terminal)
+            raise PreflightError(
+                f"Pilot refuses a new attempt: terminal result in {names} "
+                "requires separate owner review; visible seal cannot prove fsync success")
         for attempt in range(1, max_runs + 1):
             attempt_dir = package_root / f"attempt-{attempt:03d}"
             try:

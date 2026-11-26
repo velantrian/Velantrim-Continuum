@@ -759,6 +759,22 @@ class ActivationIntegrationTests(unittest.TestCase):
             self.assertEqual(after[1]["outcome"], "UNKNOWN_OUTCOME")  # orphan never rewritten
             self.assertEqual(int(counter.read_text()), 1)
 
+    def test_terminal_seal_is_not_automatic_relaunch_permission(self):
+        """Even intact seal bytes cannot prove that directory fsync succeeded."""
+        h = "c" * 64
+        for status in ("COMPLETED", "FAILED"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve()
+                attempt_number, attempt_dir = execute_pilot.reserve_attempt(root, h, 2)
+                self.assertEqual(attempt_number, 1)
+                execute_pilot.write_terminal_result(attempt_dir, {
+                    "status": status, "attempt": 1, "package_sha256": h,
+                })
+                self.assertEqual(classify.classify_attempt(attempt_dir)["outcome"], status)
+                with self.assertRaisesRegex(execute_pilot.PreflightError, "requires separate owner review"):
+                    execute_pilot.reserve_attempt(root, h, 2)
+                self.assertFalse((root / h / "attempt-002").exists())
+
     def test_new_journal_terminal_requires_matching_durable_seal(self):
         h = "a" * 64
         for status in ("COMPLETED", "FAILED"):
@@ -907,7 +923,7 @@ class ActivationIntegrationTests(unittest.TestCase):
                 cwd=repo, text=True, capture_output=True, timeout=25, check=False,
             )
             self.assertNotEqual(second.returncode, 0, second.stderr)
-            self.assertIn("unresolved UNKNOWN_OUTCOME", second.stderr)
+            self.assertIn("requires separate owner review", second.stderr)
             self.assertEqual(int(counter.read_text()), 1, "second synthetic adapter must not start")
             self.assertFalse((package / "attempt-002").exists())
 
