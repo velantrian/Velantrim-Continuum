@@ -850,6 +850,67 @@ class ActivationIntegrationTests(unittest.TestCase):
             self.assertEqual(int(calls.read_text()), 1)
             self.assertFalse((package / "attempt-002").exists())
 
+    def test_after_terminal_seal_rename_fsync_failure_does_not_retry(self):
+        """Seal bytes may be visible despite a failed fsync and failed UNKNOWN rewrite.
+
+        Acceptance: first supervisor returns 4, second supervisor using the SAME
+        journal and max_runs=2 must not even spawn the synthetic adapter.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            temp = Path(tmp)
+            repo = self.clone_repo(temp)
+            counter = temp / "synthetic-adapter-calls.txt"
+            child = (
+                "import json,sys\n"
+                "from pathlib import Path\n"
+                "p=Path(sys.argv[1]); p.write_text(str(int(p.read_text())+1 if p.exists() else 1))\n"
+                "print(json.dumps({'ok': True}))\n"
+            )
+            command = shlex.join([sys.executable, "-c", child, str(counter)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, max_runs=2,
+            )
+            injected = (
+                "import sys,os\n"
+                "from pathlib import Path\n"
+                "sys.path.insert(0,'scripts/e0')\n"
+                "import execute_pilot as ep\n"
+                "original_fsync=ep._fsync_directory\n"
+                "original_json=ep.atomic_write_json\n"
+                "def fail_after_seal_is_visible(path):\n"
+                "    if (Path(path)/'terminal-seal.json').is_file():\n"
+                "        raise OSError('injected fsync failure after terminal-seal.json rename')\n"
+                "    return original_fsync(path)\n"
+                "def fail_unknown_rewrite(path, payload):\n"
+                "    if path.name=='result.json' and payload.get('status')=='UNKNOWN_OUTCOME':\n"
+                "        raise OSError('injected UNKNOWN_OUTCOME rewrite failure')\n"
+                "    return original_json(path, payload)\n"
+                "ep._fsync_directory=fail_after_seal_is_visible\n"
+                "ep.atomic_write_json=fail_unknown_rewrite\n"
+                "raise SystemExit(ep.main())\n"
+            )
+            args = ["--repo-root", str(repo), "--manifest", str(manifest_path),
+                    "--request", str(request)]
+            first = subprocess.run(
+                [sys.executable, "-c", injected, *args], cwd=repo,
+                text=True, capture_output=True, timeout=25, check=False,
+            )
+            self.assertEqual(first.returncode, 4, first.stderr)
+            self.assertEqual(int(counter.read_text()), 1)
+            package = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+            attempt = package / "attempt-001"
+            self.assertEqual(json.loads((attempt / "result.json").read_text())["status"], "COMPLETED")
+            self.assertTrue((attempt / "terminal-seal.json").is_file())
+            self.assertEqual(classify.classify_attempt(attempt)["outcome"], "COMPLETED")
+            second = subprocess.run(
+                [sys.executable, "scripts/e0/execute_pilot.py", *args],
+                cwd=repo, text=True, capture_output=True, timeout=25, check=False,
+            )
+            self.assertNotEqual(second.returncode, 0, second.stderr)
+            self.assertIn("unresolved UNKNOWN_OUTCOME", second.stderr)
+            self.assertEqual(int(counter.read_text()), 1, "second synthetic adapter must not start")
+            self.assertFalse((package / "attempt-002").exists())
+
     def test_classifier_reservation_incomplete_and_corrupt_result(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             pkg = Path(temp_dir)
