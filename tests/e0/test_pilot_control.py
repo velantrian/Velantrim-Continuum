@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -313,6 +314,59 @@ class ActivationIntegrationTests(unittest.TestCase):
             result = json.loads(result_path.read_text(encoding="utf-8"))
             artifacts = {path.name for path in attempts[0].iterdir()}
             return proc, result, artifacts, int(counter.read_text()), len(attempts)
+
+    def test_synthetic_adapter_bad_stdout_is_unknown(self):
+        proc, result, artifacts, calls, attempts = self.run_synthetic_adapter(
+            "print('not-json')\n"
+        )
+        self.assert_unknown_bound(proc, result, artifacts, calls, attempts)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX flock integration")
+    def test_concurrent_supervisors_share_reservation_and_second_never_starts(self):
+        """Two real processes, max_runs=2, common output directory, no provider."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            repo = self.clone_repo(temp)
+            calls = temp / "calls"
+            calls.mkdir()
+            release = temp / "release"
+            child = (
+                "import os,sys,time\n"
+                "from pathlib import Path\n"
+                "calls = Path(sys.argv[1]); release = Path(sys.argv[2])\n"
+                " (calls / ('called-' + str(os.getpid()))).write_text('started')\n"
+                "deadline = time.monotonic() + 15\n"
+                "while not release.exists() and time.monotonic() < deadline: time.sleep(.02)\n"
+                "print('{}')\n"
+            )
+            child = child.replace("\n (calls", "\n(calls")
+            command = shlex.join([sys.executable, "-c", child, str(calls), str(release)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, timeout_seconds=25, max_runs=2
+            )
+            argv = [sys.executable, "scripts/e0/execute_pilot.py", "--repo-root", str(repo),
+                    "--manifest", str(manifest_path), "--request", str(request)]
+            first = subprocess.Popen(argv, cwd=repo, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True)
+            try:
+                deadline = time.monotonic() + 15
+                while not list(calls.glob("called-*")) and first.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                self.assertEqual(len(list(calls.glob("called-*"))), 1, "first synthetic adapter did not start")
+                package_root = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+                self.assertTrue((package_root / "attempt-001" / "reservation.json").is_file())
+                second = subprocess.run(argv, cwd=repo, capture_output=True, text=True, timeout=15, check=False)
+                self.assertNotEqual(second.returncode, 0)
+                self.assertIn("unresolved UNKNOWN_OUTCOME", second.stderr)
+                self.assertEqual(len(list(calls.glob("called-*"))), 1, "second synthetic adapter started")
+                self.assertFalse((package_root / "attempt-002").exists())
+            finally:
+                release.write_text("go")
+                try:
+                    first.communicate(timeout=15)
+                except subprocess.TimeoutExpired:
+                    first.kill()
+                    first.communicate()
 
     def test_synthetic_adapter_success_completes_once(self):
         proc, result, artifacts, calls, attempts = self.run_synthetic_adapter(
@@ -685,8 +739,25 @@ class ExecutePilotTests(unittest.TestCase):
             attempt, first = execute_pilot.reserve_attempt(root, "a" * 64, 1)
             self.assertEqual(attempt, 1)
             self.assertTrue(first.is_dir())
-            with self.assertRaisesRegex(preflight.PreflightError, "max_runs exhausted"):
+            self.assertTrue((first / "reservation.json").is_file())
+            with self.assertRaisesRegex(preflight.PreflightError, "unresolved UNKNOWN_OUTCOME"):
                 execute_pilot.reserve_attempt(root, "a" * 64, 1)
+
+    def test_failed_result_write_preserves_blocking_reservation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            package_hash = "a" * 64
+            attempt, attempt_dir = execute_pilot.reserve_attempt(root, package_hash, 2)
+            self.assertEqual(attempt, 1)
+            with mock.patch.object(execute_pilot, "atomic_write_json", side_effect=OSError("write failed")):
+                execute_pilot._write_result(attempt_dir, {
+                    "status": "UNKNOWN_OUTCOME", "attempt": attempt, "package_sha256": package_hash,
+                })
+            self.assertFalse((attempt_dir / "result.json").exists())
+            self.assertTrue((attempt_dir / "reservation.json").is_file())
+            with self.assertRaisesRegex(preflight.PreflightError, "unresolved UNKNOWN_OUTCOME"):
+                execute_pilot.reserve_attempt(root, package_hash, 2)
+            self.assertFalse((root / package_hash / "attempt-002").exists())
 
     def test_output_root_symlink_escape_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:

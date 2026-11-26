@@ -102,9 +102,23 @@ class OpenRouterCaptureAdapterTests(unittest.TestCase):
 
     def test_http_error_no_retry(self):
         t = MockTransport(status=500, body=b"{}")
-        with self.assertRaises(adapter.CaptureAdapterError):
+        with self.assertRaises(adapter.CaptureUnknownOutcome):
             self.run_ok(t)
         self.assertEqual(len(t.calls), 1)
+
+    def test_post_send_outcomes_are_unknown_even_with_http_or_schema_errors(self):
+        for status, body in (
+            (500, b"{}"),
+            (401, b"{}"),
+            (200, b"{bad json"),
+            (200, json.dumps(completion("not JSON")).encode()),
+            (200, json.dumps(completion(json.dumps({"schema_version": "0.1", "items": [{"item_id": "x"}]}))).encode()),
+        ):
+            with self.subTest(status=status, body=body[:30]):
+                t = MockTransport(status=status, body=body)
+                with self.assertRaises(adapter.CaptureUnknownOutcome):
+                    self.run_ok(t)
+                self.assertEqual(len(t.calls), 1)
 
     def test_rejects_non_json_and_multiple_values(self):
         for content in ("not json", json.dumps(VALID_STATE) + " {}", "[1,2]"):
@@ -169,7 +183,7 @@ class OpenRouterCaptureAdapterTests(unittest.TestCase):
 
     def test_main_exit_codes_and_no_key_leak(self):
         state_body = completion(json.dumps(VALID_STATE))
-        cases = [({"OPENROUTER_API_KEY": FAKE_KEY}, 200, 0), ({"OPENROUTER_API_KEY": FAKE_KEY}, 401, 2), ({}, 200, 2)]
+        cases = [({"OPENROUTER_API_KEY": FAKE_KEY}, 200, 0), ({"OPENROUTER_API_KEY": FAKE_KEY}, 401, 4), ({"OPENROUTER_API_KEY": FAKE_KEY}, 500, 4), ({}, 200, 2)]
         for env, status, code in cases:
             with self.subTest(status=status, env=bool(env)):
                 t = MockTransport(status=status, body=state_body)

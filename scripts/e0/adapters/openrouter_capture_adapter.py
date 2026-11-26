@@ -30,6 +30,7 @@ import hashlib
 import http.client
 import json
 import os
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -56,12 +57,12 @@ class CaptureUnknownOutcome(CaptureAdapterError):
 
 
 # Errors that prove the request never left (nothing was sent) -> plain error.
-_PRE_SEND_ERRORS = (ConnectionRefusedError,)
+_PRE_SEND_ERRORS = (ConnectionRefusedError, socket.gaierror)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D401
-        raise CaptureAdapterError(f"redirect refused (HTTP {code})")
+        raise CaptureUnknownOutcome(f"redirect after POST (HTTP {code}); provider outcome cannot be proven")
 
 
 def check_host(url: str) -> None:
@@ -158,10 +159,11 @@ def default_transport(url: str, body: bytes, headers: dict[str, str], timeout: f
         return exc.code, b""
     except urllib.error.URLError as exc:
         reason = exc.reason
-        if isinstance(reason, TimeoutError):
-            raise CaptureUnknownOutcome(f"transport timeout: {type(reason).__name__}") from None
-        # URLError wraps connect-phase failures (DNS, refused, TLS handshake): not sent.
-        raise CaptureAdapterError(f"transport error: {type(reason).__name__}") from None
+        # Only known pre-send failures can be marked FAILED. URLError may
+        # wrap a reset after POST, so all other reasons are UNKNOWN.
+        if isinstance(reason, _PRE_SEND_ERRORS):
+            raise CaptureAdapterError(f"pre-send transport error: {type(reason).__name__}") from None
+        raise CaptureUnknownOutcome(f"transport outcome uncertain: {type(reason).__name__}") from None
     except TimeoutError as exc:  # socket.timeout is TimeoutError (py>=3.10)
         raise CaptureUnknownOutcome(f"transport timeout: {type(exc).__name__}") from None
     except _PRE_SEND_ERRORS as exc:
@@ -246,20 +248,32 @@ def run(
     }
     if transport is None:
         transport = default_transport
-    status, body = transport(ENDPOINT, json.dumps(payload).encode("utf-8"), headers, timeout)  # single attempt, no retry
-    if status != 200:
-        raise CaptureAdapterError(f"provider HTTP status {status}")
-    if len(body) > MAX_RESPONSE_BYTES:
-        raise CaptureAdapterError("provider response too large")
     try:
-        response = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise CaptureAdapterError("provider response is not JSON") from None
-    if not isinstance(response, dict):
-        raise CaptureAdapterError("provider response must be a JSON object")
-    state = extract_state(response, max_total_tokens)
-    validate_state(state, schema)
-    return state
+        status, body = transport(ENDPOINT, json.dumps(payload).encode("utf-8"), headers, timeout)  # single attempt, no retry
+    except (CaptureAdapterError, CaptureUnknownOutcome):
+        raise
+    except Exception as exc:
+        # An arbitrary transport exception does not prove the POST was not sent.
+        raise CaptureUnknownOutcome(f"transport outcome uncertain: {type(exc).__name__}") from None
+    if status != 200:
+        # Even HTTP 401/500 is a provider response after POST, not proof of
+        # zero provider-side processing or billing.
+        raise CaptureUnknownOutcome(f"provider HTTP status {status} after POST")
+    try:
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise CaptureAdapterError("provider response too large")
+        try:
+            response = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise CaptureAdapterError("provider response is not JSON") from None
+        if not isinstance(response, dict):
+            raise CaptureAdapterError("provider response must be a JSON object")
+        state = extract_state(response, max_total_tokens)
+        validate_state(state, schema)
+        return state
+    except CaptureAdapterError as exc:
+        # A call may have completed despite an unreadable/invalid response.
+        raise CaptureUnknownOutcome(f"unusable post-send response: {exc}") from None
 
 
 def main(argv: list[str] | None = None) -> int:

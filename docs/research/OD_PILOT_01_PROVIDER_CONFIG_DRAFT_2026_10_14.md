@@ -86,9 +86,9 @@ This document records the owner's provider/model selection for the first Continu
 ### 4.2 Adapter contract (derived from `scripts/e0/execute_pilot.py`)
 
 - Invoked as `shlex.split(adapter_command)` in `adapter_cwd`, environment = `PATH` + `environment_allowlist` only.
-- Receives the request JSON on **stdin**; must print exactly **one JSON object** on stdout (the captured state, valid against `e0-state.schema.json`); non-zero exit = attempt FAILED.
+- Receives the request JSON on **stdin**; must print exactly **one JSON object** on stdout (the captured state, valid against `e0-state.schema.json`). Exit `2` means proven pre-send failure; exit `4` means `UNKNOWN_OUTCOME` after possible POST. Supervisor also treats invalid stdout or any unproven post-start failure as `UNKNOWN_OUTCOME`.
 - One OpenRouter `POST /api/v1/chat/completions` call, no retries, no tools, no streaming; must enforce `max_tokens` from the request and abort if the reported usage exceeds `budget.max_total_tokens`.
-- Status: **PENDING_IMPLEMENTATION** — the adapter is code and needs its own reviewed PR with offline tests (mocked HTTP). Not added here.
+- Status: **IMPLEMENTED OFFLINE / NOT AUTHORIZED** — the adapter is present in source and covered by mocked tests; no provider-side run or owner adoption is implied.
 
 ### 4.3 Token limit rationale
 
@@ -127,9 +127,9 @@ Contact/owner login: `PENDING_OWNER`.
 | Exit | stderr prefix | Meaning |
 |---|---|---|
 | 0 | — | one validated e0-state object printed to stdout |
-| 2 | `CAPTURE_ADAPTER_ERROR:` | definite failure (bad request/config, request not sent, HTTP != 200, invalid/oversized output, schema violation) |
+| 2 | `CAPTURE_ADAPTER_ERROR:` | provable pre-send failure only (invalid config/request, missing key, DNS failure, refused connection) |
 | 3 | `CAPTURE_ADAPTER_ERROR: unexpected <Type>` | unexpected internal exception (fail closed) |
-| 4 | `CAPTURE_ADAPTER_UNKNOWN_OUTCOME:` | timeout or connection lost **after send**: the provider may have processed/billed the call; outcome unknown. Never retried automatically |
+| 4 | `CAPTURE_ADAPTER_UNKNOWN_OUTCOME:` | possible post-send processing: timeout, wrapped connection reset, redirect, HTTP non-200 (including 500), invalid/oversized HTTP 200 output, invalid usage/schema; no automatic retry |
 
 Single attempt, no retries in all cases. `scripts/e0/execute_pilot.py` preserves adapter exit 4 as Pilot `UNKNOWN_OUTCOME` (CLI exit 4), not `FAILED` or `COMPLETED`. A bounded runner timeout is also conservatively `UNKNOWN_OUTCOME` because it cannot prove whether the request reached the provider. Neither status authorizes a Pilot or creates Evidence Lock.
 
@@ -138,9 +138,11 @@ Pilot `result.json` mapping (conservative: anything that cannot prove "no provid
 | Situation | Pilot status | CLI exit |
 |---|---|---|
 | adapter exit 0 + JSON stdout | `COMPLETED` | 0 |
-| adapter exit 2 (definite `CAPTURE_ADAPTER_ERROR`), preflight/authorization error, invalid stdout after exit 0 | `FAILED` | 1 |
-| adapter exit 4, 3, any other non-zero, killed by signal (negative code) | `UNKNOWN_OUTCOME` (`adapter_exit_code` recorded) | 4 |
+| trusted adapter exit 2 (proven pre-send `CAPTURE_ADAPTER_ERROR`) or preflight failure before adapter starts | `FAILED` | 1 |
+| adapter exit 4, 3, any other non-zero, killed by signal (negative code), malformed stdout after exit 0, failed output/result write after spawn | `UNKNOWN_OUTCOME` (`adapter_exit_code` when available) | 4 |
 | runner timeout, output cap exceeded | `UNKNOWN_OUTCOME` | 4 |
 | SIGINT / SIGTERM after adapter start | `UNKNOWN_OUTCOME` (before start: `FAILED`) | 4 / 1 |
 
-`UNKNOWN_OUTCOME` and `FAILED` results carry `package_sha256`, `attempt`, `request_sha256`. The reserved attempt stays consumed; nothing is retried automatically. Known limitation: SIGKILL of `execute_pilot.py` itself cannot be handled — only `reservation.json` (`RESERVED`) remains and must be read as unknown.
+\`UNKNOWN_OUTCOME\` and \`FAILED\` results carry \`package_sha256\`, \`attempt\`, \`request_sha256\`. Every allocated attempt stays spent. Reservation check, slot allocation, and fsynced \`reservation.json\` are performed under a single POSIX interprocess lock before spawning the adapter. An orphaned reservation is blocking \`UNKNOWN_OUTCOME\`, including after a failed \`result.json\` write. SIGKILL of the supervisor cannot create a false \`FAILED\`; the existing reservation blocks the next attempt.
+
+**Operational invariant for future F1-P-A (not execution authorization):** exactly **one executor**, **one persistent shared Pilot output directory** retained across working copies/restarts, and **\`max_runs=1\`**. File locking coordinates only processes that share the **same physical output directory**; separate clones with separate output roots can otherwise each reserve attempt-001. Do not delete/reset output roots, rotate working copies without their journal, or treat a Draft/green CI as owner adoption. This configuration remains \`NOT_AUTHORIZED\` until the separate A→B gates.

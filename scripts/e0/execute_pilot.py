@@ -6,6 +6,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -30,6 +31,10 @@ from classify_attempts import unknown_outcome_attempts
 
 class PilotUnknownOutcome(AdapterError):
     """Request may have been processed without a usable response (never retried)."""
+
+
+class PilotDefiniteFailure(AdapterError):
+    """The trusted adapter reported an error before the external request."""
 
 
 class PilotInterrupted(BaseException):
@@ -71,6 +76,17 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 pass
             raise
         os.replace(temporary, path)
+        # fsync the directory as well as the file: an atomic rename alone
+        # does not make the reservation durable after a power failure.
+        if os.name == "posix":
+            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            directory_fd = os.open(parent, flags)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
     finally:
         try:
             temporary.unlink()
@@ -127,31 +143,82 @@ def ensure_output_root(root: Path) -> Path:
     return resolved
 
 
-def reserve_attempt(output_root: Path, package_hash: str, max_runs: int) -> tuple[int, Path]:
+@contextmanager
+def package_reservation_lock(package_root: Path):
+    """Serialize check+reservation across POSIX processes sharing this directory.
+
+    The lock file remains on disk: unlinking it could let two processes lock
+    different inodes. Unsupported platforms fail closed rather than race.
+    """
+    if os.name != "posix":
+        raise PreflightError("interprocess Pilot reservation lock requires POSIX flock")
+    import fcntl
+
+    flags = os.O_RDWR | os.O_CREAT
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    lock_path = package_root / ".reservation.lock"
+    try:
+        fd = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        raise PreflightError(f"cannot open Pilot reservation lock: {exc}") from exc
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise PreflightError("Pilot reservation lock must be a regular file")
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def reserve_attempt(
+    output_root: Path,
+    package_hash: str,
+    max_runs: int,
+    *,
+    reservation_metadata: dict[str, Any] | None = None,
+) -> tuple[int, Path]:
     package_root = output_root / package_hash
     if package_root.exists() and package_root.is_symlink():
         raise PreflightError("Pilot package root must not be a symlink")
     package_root.mkdir(mode=0o700, exist_ok=True)
     if package_root.is_symlink() or package_root.resolve() != package_root:
         raise PreflightError("Pilot package root must remain a real directory")
-    unknown = unknown_outcome_attempts(package_root)
-    if unknown:
-        names = ", ".join(Path(e["attempt_dir"]).name for e in unknown)
-        raise PreflightError(
-            f"Pilot refuses a new attempt: unresolved UNKNOWN_OUTCOME in {names}; "
-            "the provider may have processed it, an owner must resolve it out of band")
-    for attempt in range(1, max_runs + 1):
-        attempt_dir = package_root / f"attempt-{attempt:03d}"
-        try:
-            attempt_dir.mkdir(mode=0o700)
-        except FileExistsError:
-            if attempt_dir.is_symlink():
-                raise PreflightError("Pilot attempt path must not be a symlink")
-            continue
-        if attempt_dir.is_symlink() or attempt_dir.resolve() != attempt_dir:
-            raise PreflightError("Pilot attempt directory must remain a real directory")
-        return attempt, attempt_dir
-    raise PreflightError(f"Pilot max_runs exhausted: {max_runs} attempt(s) already reserved")
+    with package_reservation_lock(package_root):
+        # The journal check and the durable blocking reservation form one
+        # interprocess critical section. No adapter may start before it ends.
+        unknown = unknown_outcome_attempts(package_root)
+        if unknown:
+            names = ", ".join(Path(e["attempt_dir"]).name for e in unknown)
+            raise PreflightError(
+                f"Pilot refuses a new attempt: unresolved UNKNOWN_OUTCOME in {names}; "
+                "the provider may have processed it, an owner must resolve it out of band")
+        for attempt in range(1, max_runs + 1):
+            attempt_dir = package_root / f"attempt-{attempt:03d}"
+            try:
+                attempt_dir.mkdir(mode=0o700)
+            except FileExistsError:
+                if attempt_dir.is_symlink():
+                    raise PreflightError("Pilot attempt path must not be a symlink")
+                continue
+            if attempt_dir.is_symlink() or attempt_dir.resolve() != attempt_dir:
+                raise PreflightError("Pilot attempt directory must remain a real directory")
+            reservation = {
+                **(reservation_metadata or {}),
+                "package_sha256": package_hash,
+                "attempt": attempt,
+                "max_runs": max_runs,
+                "status": "RESERVED",
+                "label": "PILOT — NOT EVIDENCE",
+            }
+            # A failed write spends this slot; the adapter is never started.
+            # A persisted reservation without result.json blocks all later slots.
+            atomic_write_json(attempt_dir / "reservation.json", reservation)
+            return attempt, attempt_dir
+        raise PreflightError(f"Pilot max_runs exhausted: {max_runs} attempt(s) already reserved")
 
 
 def safe_adapter_cwd(root: Path, relative: str) -> Path:
@@ -226,7 +293,15 @@ def main() -> int:
         max_runs = limits["max_runs"]
         ensure_clean_worktree(root)
         output_root = ensure_output_root(root)
-        attempt_number, attempt_dir = reserve_attempt(output_root, manifest_sha, max_runs)
+        attempt_number, attempt_dir = reserve_attempt(
+            output_root, manifest_sha, max_runs,
+            reservation_metadata={
+                "authorization_base_commit": provenance["authorization_base_commit"],
+                "authorization_base_tree": provenance["authorization_base_tree"],
+                "activation_head_commit": provenance["activation_head_commit"],
+                "activation_tree": provenance["activation_tree"],
+            },
+        )
         binding = {
             "package_sha256": manifest_sha,
             "attempt": attempt_number,
@@ -235,21 +310,8 @@ def main() -> int:
 
         atomic_write_bytes(attempt_dir / "manifest.json", manifest_bytes)
         atomic_write_bytes(attempt_dir / "request.json", request_bytes)
-        atomic_write_json(
-            attempt_dir / "reservation.json",
-            {
-                "package_sha256": manifest_sha,
-                "authorization_base_commit": provenance["authorization_base_commit"],
-                "authorization_base_tree": provenance["authorization_base_tree"],
-                "activation_head_commit": provenance["activation_head_commit"],
-                "activation_tree": provenance["activation_tree"],
-                "attempt": attempt_number,
-                "max_runs": max_runs,
-                "status": "RESERVED",
-                "label": "PILOT — NOT EVIDENCE",
-            },
-        )
-
+        # reservation.json was durably written under the lock before
+        # any manifest/request copy or child process can run.
         cwd = safe_adapter_cwd(root, manifest["adapter_cwd"])
         env = build_child_env(manifest["environment_allowlist"])
         ensure_clean_worktree(root)
@@ -271,7 +333,7 @@ def main() -> int:
             )
             if returncode not in DEFINITE_FAILURE_EXIT_CODES:
                 raise PilotUnknownOutcome(detail, returncode)
-            raise AdapterError(detail)
+            raise PilotDefiniteFailure(detail)
         try:
             response = json.loads(stdout)
         except json.JSONDecodeError as exc:
@@ -325,10 +387,21 @@ def main() -> int:
         _write_result(attempt_dir, {"status": "FAILED", **binding, "error": reason + " before adapter start"})
         print(f"PILOT_EXECUTION_ERROR: {reason} before adapter start", file=sys.stderr)
         return 1
-    except (PreflightError, AdapterError, OSError) as exc:
+    except PilotDefiniteFailure as exc:
         _write_result(attempt_dir, {"status": "FAILED", **binding, "error": str(exc)})
         print(f"PILOT_EXECUTION_ERROR: {exc}", file=sys.stderr)
         return 1
+    except (PreflightError, AdapterError, OSError) as exc:
+        if adapter_started:
+            return _unknown_outcome(attempt_dir, binding, str(exc), None)
+        _write_result(attempt_dir, {"status": "FAILED", **binding, "error": str(exc)})
+        print(f"PILOT_EXECUTION_ERROR: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        # Unexpected post-spawn failures cannot prove the provider did nothing.
+        if adapter_started:
+            return _unknown_outcome(attempt_dir, binding, f"unexpected {type(exc).__name__}", None)
+        raise
     finally:
         signal.signal(signal.SIGTERM, previous_sigterm)
 
