@@ -47,6 +47,7 @@ class PilotInterrupted(BaseException):
 # negative = killed by signal) cannot prove the provider call did not happen and is
 # preserved conservatively as UNKNOWN_OUTCOME.
 DEFINITE_FAILURE_EXIT_CODES = frozenset({2})
+TERMINAL_SEAL_PROTOCOL = "terminal-seal-v1"
 
 
 def _raise_interrupted(signum: int, _frame: Any) -> None:
@@ -112,6 +113,27 @@ def atomic_write_json(path: Path, value: Any) -> None:
     atomic_write_bytes(path, (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
 
 
+def write_terminal_result(attempt_dir: Path, payload: dict[str, Any]) -> None:
+    """Only a separately fsynced matching seal makes a terminal status durable.
+
+    A renamed result.json can be visible when its directory fsync failed.
+    Without the seal, its classification remains UNKNOWN_OUTCOME.
+    """
+    status = payload.get("status")
+    if status not in {"COMPLETED", "FAILED"}:
+        raise ValueError("terminal seal requires COMPLETED or FAILED")
+    result_bytes = (json.dumps({"label": "PILOT — NOT EVIDENCE", **payload},
+                               ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    atomic_write_bytes(attempt_dir / "result.json", result_bytes)
+    atomic_write_json(attempt_dir / "terminal-seal.json", {
+        "protocol": TERMINAL_SEAL_PROTOCOL,
+        "status": status,
+        "attempt": payload["attempt"],
+        "package_sha256": payload["package_sha256"],
+        "result_sha256": sha256_bytes(result_bytes),
+    })
+
+
 def read_regular_file_once(path: Path, *, label: str) -> bytes:
     if path.is_symlink():
         raise PreflightError(f"{label} must not be a symlink")
@@ -148,9 +170,8 @@ def ensure_output_root(root: Path) -> Path:
         raise PreflightError("Pilot output root must not be a symlink")
     try:
         lexical.mkdir(mode=0o700)
-        new_output_root = True
     except FileExistsError:
-        new_output_root = False
+        pass
     if lexical.is_symlink():
         raise PreflightError("Pilot output root became a symlink")
     resolved = lexical.resolve()
@@ -158,9 +179,8 @@ def ensure_output_root(root: Path) -> Path:
         raise PreflightError("Pilot output root resolves inside the Git repository")
     if resolved != lexical:
         raise PreflightError("Pilot output root must resolve to its dedicated sibling path")
-    if new_output_root:
-        # Persist the new output-root entry in the repository's parent dir.
-        _fsync_directory(lexical.parent)
+    # Check even on reopen: a prior mkdir may have succeeded but fsync failed.
+    _fsync_directory(lexical.parent)
     return resolved
 
 
@@ -209,15 +229,12 @@ def reserve_attempt(
         raise PreflightError("Pilot package root must not be a symlink")
     try:
         package_root.mkdir(mode=0o700)
-        new_package_root = True
     except FileExistsError:
-        new_package_root = False
+        pass
     if package_root.is_symlink() or package_root.resolve() != package_root:
         raise PreflightError("Pilot package root must remain a real directory")
-    if new_package_root:
-        # A persisted reservation cannot be found after reboot unless its
-        # package-directory entry also survived.
-        _fsync_directory(output_root)
+    # Rechecking existing directories is required after failed fsync.
+    _fsync_directory(output_root)
     with package_reservation_lock(package_root):
         # The journal check and the durable blocking reservation form one
         # interprocess critical section. No adapter may start before it ends.
@@ -246,6 +263,7 @@ def reserve_attempt(
                 "attempt": attempt,
                 "max_runs": max_runs,
                 "status": "RESERVED",
+                "journal_protocol": TERMINAL_SEAL_PROTOCOL,
                 "label": "PILOT — NOT EVIDENCE",
             }
             # A failed write spends this slot; the adapter is never started.
@@ -395,8 +413,8 @@ def main() -> int:
         metrics_payload = (json.dumps(metrics, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
         atomic_write_bytes(attempt_dir / "response.json", response_payload)
         atomic_write_bytes(attempt_dir / "metrics.json", metrics_payload)
-        atomic_write_json(
-            attempt_dir / "result.json",
+        write_terminal_result(
+            attempt_dir,
             {
                 "status": "COMPLETED",
                 "label": "PILOT — NOT EVIDENCE",
@@ -420,17 +438,22 @@ def main() -> int:
         reason = f"interrupted ({type(exc).__name__}: {exc})"
         if adapter_started:
             return _unknown_outcome(attempt_dir, binding, reason, None)
-        _write_result(attempt_dir, {"status": "FAILED", **binding, "error": reason + " before adapter start"})
+        persisted = _write_result(attempt_dir, {"status": "FAILED", **binding, "error": reason + " before adapter start"})
+        if attempt_dir is not None and not persisted:
+            return _unknown_outcome(attempt_dir, binding, "definite failure could not be durably sealed", None)
         print(f"PILOT_EXECUTION_ERROR: {reason} before adapter start", file=sys.stderr)
         return 1
     except PilotDefiniteFailure as exc:
-        _write_result(attempt_dir, {"status": "FAILED", **binding, "error": str(exc)})
+        if not _write_result(attempt_dir, {"status": "FAILED", **binding, "error": str(exc)}):
+            return _unknown_outcome(attempt_dir, binding, "definite failure could not be durably sealed", None)
         print(f"PILOT_EXECUTION_ERROR: {exc}", file=sys.stderr)
         return 1
     except (PreflightError, AdapterError, OSError) as exc:
         if adapter_started:
             return _unknown_outcome(attempt_dir, binding, str(exc), None)
-        _write_result(attempt_dir, {"status": "FAILED", **binding, "error": str(exc)})
+        persisted = _write_result(attempt_dir, {"status": "FAILED", **binding, "error": str(exc)})
+        if attempt_dir is not None and not persisted:
+            return _unknown_outcome(attempt_dir, binding, "pre-spawn failure could not be durably sealed", None)
         print(f"PILOT_EXECUTION_ERROR: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:
@@ -442,13 +465,17 @@ def main() -> int:
         signal.signal(signal.SIGTERM, previous_sigterm)
 
 
-def _write_result(attempt_dir: Path | None, payload: dict[str, Any]) -> None:
+def _write_result(attempt_dir: Path | None, payload: dict[str, Any]) -> bool:
     if attempt_dir is None:
-        return
+        return False
     try:
-        atomic_write_json(attempt_dir / "result.json", {"label": "PILOT — NOT EVIDENCE", **payload})
+        if payload.get("status") == "FAILED":
+            write_terminal_result(attempt_dir, payload)
+        else:
+            atomic_write_json(attempt_dir / "result.json", {"label": "PILOT — NOT EVIDENCE", **payload})
     except OSError:
-        pass
+        return False
+    return True
 
 
 def _unknown_outcome(attempt_dir: Path | None, binding: dict[str, Any], error: str, exit_code: int | None) -> int:

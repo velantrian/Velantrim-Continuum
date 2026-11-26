@@ -759,6 +759,91 @@ class ActivationIntegrationTests(unittest.TestCase):
             self.assertEqual(after[1]["outcome"], "UNKNOWN_OUTCOME")  # orphan never rewritten
             self.assertEqual(int(counter.read_text()), 1)
 
+    def test_new_journal_terminal_requires_matching_durable_seal(self):
+        h = "a" * 64
+        for status in ("COMPLETED", "FAILED"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                package = Path(tmp) / h
+                att = package / "attempt-001"
+                att.mkdir(parents=True)
+                reservation = {
+                    "journal_protocol": execute_pilot.TERMINAL_SEAL_PROTOCOL,
+                    "package_sha256": h, "attempt": 1,
+                }
+                (att / "reservation.json").write_text(json.dumps(reservation))
+                result = {"status": status, "attempt": 1, "package_sha256": h}
+                (att / "result.json").write_text(json.dumps(result))
+                self.assertEqual(classify.classify_attempt(att)["classification"],
+                                 "UNSEALED_TERMINAL_RESULT")
+                with self.assertRaisesRegex(execute_pilot.PreflightError, "unresolved UNKNOWN_OUTCOME"):
+                    execute_pilot.reserve_attempt(Path(tmp), h, 2)
+                payload = (att / "result.json").read_bytes()
+                seal = {
+                    "protocol": execute_pilot.TERMINAL_SEAL_PROTOCOL,
+                    "status": status, "attempt": 1, "package_sha256": h,
+                    "result_sha256": hashlib.sha256(payload).hexdigest(),
+                }
+                (att / "terminal-seal.json").write_text(json.dumps(seal))
+                self.assertEqual(classify.classify_attempt(att)["outcome"], status)
+                seal["result_sha256"] = "0" * 64
+                (att / "terminal-seal.json").write_text(json.dumps(seal))
+                self.assertEqual(classify.classify_attempt(att)["outcome"], "UNKNOWN_OUTCOME")
+
+    def test_after_completed_rename_fsync_failure_retry_stays_blocked(self):
+        """Mock disk fsync failure after publishing COMPLETED, and again for UNKNOWN.
+
+        The first synthetic adapter runs once. Later CLI has exit 4 and no
+        terminal seal; even a readable COMPLETED result must not enable run 2.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            temp = Path(tmp)
+            repo = self.clone_repo(temp)
+            calls = temp / "provider-calls.txt"
+            child = ("import sys,json\n"
+                     "from pathlib import Path\n"
+                     "p=Path(sys.argv[1]);p.write_text(str(int(p.read_text())+1 if p.exists() else 1))\n"
+                     "print(json.dumps({'ok': True}))\n")
+            command = shlex.join([sys.executable, "-c", child, str(calls)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, max_runs=2,
+            )
+            script = (
+                "import sys,os,json\n"
+                "from pathlib import Path\n"
+                "sys.path.insert(0,'scripts/e0')\n"
+                "import execute_pilot as ep\n"
+                "original=ep._fsync_directory\n"
+                "def flaky(path):\n"
+                "    result=Path(path)/'result.json'\n"
+                "    if result.is_file():\n"
+                "        raise OSError('injected fsync after result rename')\n"
+                "    return original(path)\n"
+                "ep._fsync_directory=flaky\n"
+                "raise SystemExit(ep.main())\n"
+            )
+            argv = ["--repo-root", str(repo), "--manifest", str(manifest_path),
+                    "--request", str(request)]
+            first = subprocess.run(
+                [sys.executable, "-c", script, *argv], cwd=repo,
+                text=True, capture_output=True, timeout=25, check=False,
+            )
+            self.assertEqual(first.returncode, 4, first.stderr)
+            self.assertEqual(int(calls.read_text()), 1)
+            package = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+            att = package / "attempt-001"
+            self.assertEqual(json.loads((att / "result.json").read_text())["status"], "COMPLETED")
+            self.assertFalse((att / "terminal-seal.json").exists())
+            self.assertEqual(classify.classify_attempt(att)["classification"],
+                             "UNSEALED_TERMINAL_RESULT")
+            second = subprocess.run(
+                [sys.executable, "scripts/e0/execute_pilot.py", *argv], cwd=repo,
+                text=True, capture_output=True, timeout=25, check=False,
+            )
+            self.assertNotEqual(second.returncode, 0)
+            self.assertIn("unresolved UNKNOWN_OUTCOME", second.stderr)
+            self.assertEqual(int(calls.read_text()), 1)
+            self.assertFalse((package / "attempt-002").exists())
+
     def test_classifier_reservation_incomplete_and_corrupt_result(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             pkg = Path(temp_dir)
@@ -913,6 +998,43 @@ class ExecutePilotTests(unittest.TestCase):
             self.assertIn(attempt_dir, synced)  # atomic reservation rename
 
     @unittest.skipUnless(os.name == "posix", "POSIX directory fsync")
+    @unittest.skipUnless(os.name == "posix", "POSIX directory fsync")
+    def test_reopened_output_root_retries_required_parent_fsync(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            target_parent = root.resolve()
+            original = execute_pilot._fsync_directory
+            for run in (1, 2):
+                with self.subTest(run=run):
+                    def failing(path):
+                        if path == target_parent:
+                            raise OSError("persistent output parent fsync fault")
+                        return original(path)
+                    with mock.patch.object(execute_pilot, "_fsync_directory", side_effect=failing):
+                        with self.assertRaisesRegex(OSError, "persistent output parent fsync fault"):
+                            execute_pilot.ensure_output_root(repo.resolve())
+                    self.assertTrue((root / preflight.PILOT_OUTPUT_DESTINATION).is_dir())
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory fsync")
+    def test_reopened_package_root_retries_required_parent_fsync(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            h = "b" * 64
+            original = execute_pilot._fsync_directory
+            for run in (1, 2):
+                with self.subTest(run=run):
+                    def failing(path):
+                        if path == root:
+                            raise OSError("persistent package parent fsync fault")
+                        return original(path)
+                    with mock.patch.object(execute_pilot, "_fsync_directory", side_effect=failing):
+                        with self.assertRaisesRegex(OSError, "persistent package parent fsync fault"):
+                            execute_pilot.reserve_attempt(root, h, 1)
+                    self.assertTrue((root / h).is_dir())
+                    self.assertFalse((root / h / "attempt-001").exists())
+
     def test_fsync_failure_prevents_durable_reservation_completion(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
