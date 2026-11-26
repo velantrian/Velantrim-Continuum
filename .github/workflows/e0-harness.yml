@@ -32,5 +32,5 @@ jobs:
         run: python -m compileall -q scripts/e0
       - name: Validate Experiment 0 contracts
         run: python scripts/e0/validate_contracts.py
-      - name: Run Experiment 0 unit tests
-        run: python -m unittest discover -s tests/e0 -v
+      - name: Run complete offline test suites
+        run: python scripts/run_all_tests.py

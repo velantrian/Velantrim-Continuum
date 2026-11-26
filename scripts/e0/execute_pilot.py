@@ -6,6 +6,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -25,34 +26,62 @@ from preflight_pilot import (
     validate_manifest,
 )
 from run_adapter import AdapterError, AdapterOutputLimitError, AdapterTimeoutError, bounded_run
-from classify_attempts import unknown_outcome_attempts
+from classify_attempts import classify_attempt
 
 
 class PilotUnknownOutcome(AdapterError):
     """Request may have been processed without a usable response (never retried)."""
 
 
+class PilotDefiniteFailure(AdapterError):
+    """The trusted adapter reported an error before the external request."""
+
+
 class PilotInterrupted(BaseException):
     """SIGINT/SIGTERM received; BaseException so it is never mistaken for a definite error."""
 
 
-# Adapter exit codes that prove a definite outcome. 0 = response; 2 = definite error
-# (CAPTURE_ADAPTER_ERROR: request not sent, HTTP != 200, invalid output, ...).
+# Adapter exit codes that prove a definite outcome. 0 = response; 2 = proven
+# pre-send failure (CAPTURE_ADAPTER_ERROR: request was not sent).
 # Every other code (4 UNKNOWN_OUTCOME, 3 unexpected exception, 1 uncaught crash,
 # negative = killed by signal) cannot prove the provider call did not happen and is
 # preserved conservatively as UNKNOWN_OUTCOME.
 DEFINITE_FAILURE_EXIT_CODES = frozenset({2})
+TERMINAL_SEAL_PROTOCOL = "terminal-seal-v1"
 
 
 def _raise_interrupted(signum: int, _frame: Any) -> None:
     raise PilotInterrupted(f"received signal {signum}")
 
 
+def _fsync_directory(path: Path) -> None:
+    """Persist directory entries after mkdir/rename, or fail before Pilot spawn.
+
+    POSIX flock is already required for the Pilot journal. Do not silently
+    downgrade durability guarantees on an unsupported platform/filesystem.
+    """
+    if os.name != "posix":
+        raise PreflightError("durable Pilot journal directory fsync requires POSIX")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    directory_fd = os.open(path, flags)
+    try:
+        if not stat.S_ISDIR(os.fstat(directory_fd).st_mode):
+            raise PreflightError(f"Pilot journal parent must be a directory: {path}")
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     parent = path.parent
     if parent.is_symlink():
         raise PreflightError(f"Pilot output parent must not be a symlink: {parent}")
-    parent.mkdir(parents=True, exist_ok=True)
+    # Journal directories must be created and fsynced explicitly before
+    # invoking this writer; implicit mkdir would leave unflushed parents.
+    if not parent.is_dir():
+        raise PreflightError(f"Pilot output parent is not a directory: {parent}")
     resolved_parent = parent.resolve()
     if resolved_parent != parent:
         raise PreflightError(f"Pilot output parent resolved unexpectedly: {parent}")
@@ -71,6 +100,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 pass
             raise
         os.replace(temporary, path)
+        # Persist the renamed journal entry as well as the file contents.
+        _fsync_directory(parent)
     finally:
         try:
             temporary.unlink()
@@ -80,6 +111,27 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
 
 def atomic_write_json(path: Path, value: Any) -> None:
     atomic_write_bytes(path, (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+
+
+def write_terminal_result(attempt_dir: Path, payload: dict[str, Any]) -> None:
+    """Only a separately fsynced matching seal makes a terminal status durable.
+
+    A renamed result.json can be visible when its directory fsync failed.
+    Without the seal, its classification remains UNKNOWN_OUTCOME.
+    """
+    status = payload.get("status")
+    if status not in {"COMPLETED", "FAILED"}:
+        raise ValueError("terminal seal requires COMPLETED or FAILED")
+    result_bytes = (json.dumps({"label": "PILOT — NOT EVIDENCE", **payload},
+                               ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    atomic_write_bytes(attempt_dir / "result.json", result_bytes)
+    atomic_write_json(attempt_dir / "terminal-seal.json", {
+        "protocol": TERMINAL_SEAL_PROTOCOL,
+        "status": status,
+        "attempt": payload["attempt"],
+        "package_sha256": payload["package_sha256"],
+        "result_sha256": sha256_bytes(result_bytes),
+    })
 
 
 def read_regular_file_once(path: Path, *, label: str) -> bytes:
@@ -116,7 +168,10 @@ def ensure_output_root(root: Path) -> Path:
     lexical = root.parent / PILOT_OUTPUT_DESTINATION
     if lexical.exists() and lexical.is_symlink():
         raise PreflightError("Pilot output root must not be a symlink")
-    lexical.mkdir(mode=0o700, exist_ok=True)
+    try:
+        lexical.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
     if lexical.is_symlink():
         raise PreflightError("Pilot output root became a symlink")
     resolved = lexical.resolve()
@@ -124,34 +179,144 @@ def ensure_output_root(root: Path) -> Path:
         raise PreflightError("Pilot output root resolves inside the Git repository")
     if resolved != lexical:
         raise PreflightError("Pilot output root must resolve to its dedicated sibling path")
+    # Check even on reopen: a prior mkdir may have succeeded but fsync failed.
+    _fsync_directory(lexical.parent)
     return resolved
 
 
-def reserve_attempt(output_root: Path, package_hash: str, max_runs: int) -> tuple[int, Path]:
+@contextmanager
+def package_reservation_lock(package_root: Path):
+    """Serialize check+reservation across POSIX processes sharing this directory.
+
+    The lock file remains on disk: unlinking it could let two processes lock
+    different inodes. Unsupported platforms fail closed rather than race.
+    """
+    if os.name != "posix":
+        raise PreflightError("interprocess Pilot reservation lock requires POSIX flock")
+    import fcntl
+
+    flags = os.O_RDWR | os.O_CREAT
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    lock_path = package_root / ".reservation.lock"
+    try:
+        fd = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        raise PreflightError(f"cannot open Pilot reservation lock: {exc}") from exc
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise PreflightError("Pilot reservation lock must be a regular file")
+        # Persist the lock directory entry before it coordinates a slot.
+        _fsync_directory(package_root)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def reserve_attempt(
+    output_root: Path,
+    package_hash: str,
+    max_runs: int,
+    *,
+    reservation_metadata: dict[str, Any] | None = None,
+) -> tuple[int, Path]:
     package_root = output_root / package_hash
     if package_root.exists() and package_root.is_symlink():
         raise PreflightError("Pilot package root must not be a symlink")
-    package_root.mkdir(mode=0o700, exist_ok=True)
+    try:
+        package_root.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
     if package_root.is_symlink() or package_root.resolve() != package_root:
         raise PreflightError("Pilot package root must remain a real directory")
-    unknown = unknown_outcome_attempts(package_root)
-    if unknown:
-        names = ", ".join(Path(e["attempt_dir"]).name for e in unknown)
-        raise PreflightError(
-            f"Pilot refuses a new attempt: unresolved UNKNOWN_OUTCOME in {names}; "
-            "the provider may have processed it, an owner must resolve it out of band")
-    for attempt in range(1, max_runs + 1):
-        attempt_dir = package_root / f"attempt-{attempt:03d}"
-        try:
-            attempt_dir.mkdir(mode=0o700)
-        except FileExistsError:
-            if attempt_dir.is_symlink():
-                raise PreflightError("Pilot attempt path must not be a symlink")
-            continue
-        if attempt_dir.is_symlink() or attempt_dir.resolve() != attempt_dir:
-            raise PreflightError("Pilot attempt directory must remain a real directory")
-        return attempt, attempt_dir
-    raise PreflightError(f"Pilot max_runs exhausted: {max_runs} attempt(s) already reserved")
+    # Rechecking existing directories is required after failed fsync.
+    _fsync_directory(output_root)
+    with package_reservation_lock(package_root):
+        # The journal check and the durable blocking reservation form one
+        # interprocess critical section. No adapter may start before it ends.
+        # One admission pass under flock, with reservation.json as v1 authority.
+        # Never reclassify a v1 result or seal to authorize another slot.
+        for prior_dir in sorted(package_root.glob("attempt-*")):
+            if prior_dir.is_symlink() or not prior_dir.is_dir():
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: invalid journal path {prior_dir.name}")
+            try:
+                reservation = parse_json_object(
+                    read_regular_file_once(prior_dir / "reservation.json",
+                                           label="Pilot reservation"),
+                    label="Pilot reservation",
+                )
+            except (PreflightError, OSError) as exc:
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: reservation.json unreadable "
+                    f"in {prior_dir.name}: {exc}") from exc
+            # Presence, not value, opts out of legacy handling. Explicit
+            # null, unknown/future versions and v1 must all fail closed.
+            if "journal_protocol" in reservation:
+                protocol = reservation["journal_protocol"]
+                kind = (
+                    "v1 reservation" if protocol == TERMINAL_SEAL_PROTOCOL
+                    else "explicit journal_protocol"
+                )
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: {kind} in "
+                    f"{prior_dir.name} requires separate owner review; "
+                    "unresolved UNKNOWN_OUTCOME cannot be excluded")
+            # A seal without a protocol header is not proof of a legacy
+            # journal. lstat also detects dangling symlinks and fails closed
+            # on errors inspecting the marker.
+            seal_path = prior_dir / "terminal-seal.json"
+            try:
+                seal_path.lstat()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: cannot inspect terminal-seal.json "
+                    f"in {prior_dir.name}: {exc}") from exc
+            else:
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: terminal-seal.json in "
+                    f"{prior_dir.name} requires separate owner review; "
+                    "legacy journal cannot be established")
+            # Historical rules apply only when BOTH markers are absent.
+            legacy = classify_attempt(prior_dir, reservation_override=reservation)
+            if legacy["outcome"] == "UNKNOWN_OUTCOME":
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: unresolved UNKNOWN_OUTCOME "
+                    f"in {prior_dir.name}; the provider may have processed it, "
+                    "an owner must resolve it out of band")
+        for attempt in range(1, max_runs + 1):
+            attempt_dir = package_root / f"attempt-{attempt:03d}"
+            try:
+                attempt_dir.mkdir(mode=0o700)
+            except FileExistsError:
+                if attempt_dir.is_symlink():
+                    raise PreflightError("Pilot attempt path must not be a symlink")
+                continue
+            if attempt_dir.is_symlink() or attempt_dir.resolve() != attempt_dir:
+                raise PreflightError("Pilot attempt directory must remain a real directory")
+            # Persist the newly allocated attempt directory before its
+            # reservation.json is fsynced and before releasing the lock.
+            _fsync_directory(package_root)
+            reservation = {
+                **(reservation_metadata or {}),
+                "package_sha256": package_hash,
+                "attempt": attempt,
+                "max_runs": max_runs,
+                "status": "RESERVED",
+                "journal_protocol": TERMINAL_SEAL_PROTOCOL,
+                "label": "PILOT — NOT EVIDENCE",
+            }
+            # A failed write spends this slot; the adapter is never started.
+            # A persisted reservation without result.json blocks all later slots.
+            atomic_write_json(attempt_dir / "reservation.json", reservation)
+            return attempt, attempt_dir
+        raise PreflightError(f"Pilot max_runs exhausted: {max_runs} attempt(s) already reserved")
 
 
 def safe_adapter_cwd(root: Path, relative: str) -> Path:
@@ -226,7 +391,15 @@ def main() -> int:
         max_runs = limits["max_runs"]
         ensure_clean_worktree(root)
         output_root = ensure_output_root(root)
-        attempt_number, attempt_dir = reserve_attempt(output_root, manifest_sha, max_runs)
+        attempt_number, attempt_dir = reserve_attempt(
+            output_root, manifest_sha, max_runs,
+            reservation_metadata={
+                "authorization_base_commit": provenance["authorization_base_commit"],
+                "authorization_base_tree": provenance["authorization_base_tree"],
+                "activation_head_commit": provenance["activation_head_commit"],
+                "activation_tree": provenance["activation_tree"],
+            },
+        )
         binding = {
             "package_sha256": manifest_sha,
             "attempt": attempt_number,
@@ -235,21 +408,8 @@ def main() -> int:
 
         atomic_write_bytes(attempt_dir / "manifest.json", manifest_bytes)
         atomic_write_bytes(attempt_dir / "request.json", request_bytes)
-        atomic_write_json(
-            attempt_dir / "reservation.json",
-            {
-                "package_sha256": manifest_sha,
-                "authorization_base_commit": provenance["authorization_base_commit"],
-                "authorization_base_tree": provenance["authorization_base_tree"],
-                "activation_head_commit": provenance["activation_head_commit"],
-                "activation_tree": provenance["activation_tree"],
-                "attempt": attempt_number,
-                "max_runs": max_runs,
-                "status": "RESERVED",
-                "label": "PILOT — NOT EVIDENCE",
-            },
-        )
-
+        # reservation.json was durably written under the lock before
+        # any manifest/request copy or child process can run.
         cwd = safe_adapter_cwd(root, manifest["adapter_cwd"])
         env = build_child_env(manifest["environment_allowlist"])
         ensure_clean_worktree(root)
@@ -271,11 +431,13 @@ def main() -> int:
             )
             if returncode not in DEFINITE_FAILURE_EXIT_CODES:
                 raise PilotUnknownOutcome(detail, returncode)
-            raise AdapterError(detail)
+            raise PilotDefiniteFailure(detail)
         try:
             response = json.loads(stdout)
         except json.JSONDecodeError as exc:
-            raise AdapterError(f"adapter stdout is not JSON: {exc}") from exc
+            raise PilotUnknownOutcome(f"adapter stdout is not JSON: {exc}") from exc
+        if not isinstance(response, dict):
+            raise PilotUnknownOutcome("adapter stdout must contain exactly one JSON object")
 
         metrics = {
             "latency_ms": {"provenance": "MEASURED", "value": elapsed_ms, "unit": "ms"},
@@ -297,8 +459,8 @@ def main() -> int:
         metrics_payload = (json.dumps(metrics, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
         atomic_write_bytes(attempt_dir / "response.json", response_payload)
         atomic_write_bytes(attempt_dir / "metrics.json", metrics_payload)
-        atomic_write_json(
-            attempt_dir / "result.json",
+        write_terminal_result(
+            attempt_dir,
             {
                 "status": "COMPLETED",
                 "label": "PILOT — NOT EVIDENCE",
@@ -322,24 +484,44 @@ def main() -> int:
         reason = f"interrupted ({type(exc).__name__}: {exc})"
         if adapter_started:
             return _unknown_outcome(attempt_dir, binding, reason, None)
-        _write_result(attempt_dir, {"status": "FAILED", **binding, "error": reason + " before adapter start"})
+        persisted = _write_result(attempt_dir, {"status": "FAILED", **binding, "error": reason + " before adapter start"})
+        if attempt_dir is not None and not persisted:
+            return _unknown_outcome(attempt_dir, binding, "definite failure could not be durably sealed", None)
         print(f"PILOT_EXECUTION_ERROR: {reason} before adapter start", file=sys.stderr)
         return 1
-    except (PreflightError, AdapterError, OSError) as exc:
-        _write_result(attempt_dir, {"status": "FAILED", **binding, "error": str(exc)})
+    except PilotDefiniteFailure as exc:
+        if not _write_result(attempt_dir, {"status": "FAILED", **binding, "error": str(exc)}):
+            return _unknown_outcome(attempt_dir, binding, "definite failure could not be durably sealed", None)
         print(f"PILOT_EXECUTION_ERROR: {exc}", file=sys.stderr)
         return 1
+    except (PreflightError, AdapterError, OSError) as exc:
+        if adapter_started:
+            return _unknown_outcome(attempt_dir, binding, str(exc), None)
+        persisted = _write_result(attempt_dir, {"status": "FAILED", **binding, "error": str(exc)})
+        if attempt_dir is not None and not persisted:
+            return _unknown_outcome(attempt_dir, binding, "pre-spawn failure could not be durably sealed", None)
+        print(f"PILOT_EXECUTION_ERROR: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        # Unexpected post-spawn failures cannot prove the provider did nothing.
+        if adapter_started:
+            return _unknown_outcome(attempt_dir, binding, f"unexpected {type(exc).__name__}", None)
+        raise
     finally:
         signal.signal(signal.SIGTERM, previous_sigterm)
 
 
-def _write_result(attempt_dir: Path | None, payload: dict[str, Any]) -> None:
+def _write_result(attempt_dir: Path | None, payload: dict[str, Any]) -> bool:
     if attempt_dir is None:
-        return
+        return False
     try:
-        atomic_write_json(attempt_dir / "result.json", {"label": "PILOT — NOT EVIDENCE", **payload})
+        if payload.get("status") == "FAILED":
+            write_terminal_result(attempt_dir, payload)
+        else:
+            atomic_write_json(attempt_dir / "result.json", {"label": "PILOT — NOT EVIDENCE", **payload})
     except OSError:
-        pass
+        return False
+    return True
 
 
 def _unknown_outcome(attempt_dir: Path | None, binding: dict[str, Any], error: str, exit_code: int | None) -> int:

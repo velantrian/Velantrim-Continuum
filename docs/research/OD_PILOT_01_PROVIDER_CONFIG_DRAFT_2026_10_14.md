@@ -86,9 +86,9 @@ This document records the owner's provider/model selection for the first Continu
 ### 4.2 Adapter contract (derived from `scripts/e0/execute_pilot.py`)
 
 - Invoked as `shlex.split(adapter_command)` in `adapter_cwd`, environment = `PATH` + `environment_allowlist` only.
-- Receives the request JSON on **stdin**; must print exactly **one JSON object** on stdout (the captured state, valid against `e0-state.schema.json`); non-zero exit = attempt FAILED.
+- Receives the request JSON on **stdin**; must print exactly **one JSON object** on stdout (the captured state, valid against `e0-state.schema.json`). Exit `2` means proven pre-send failure; exit `4` means `UNKNOWN_OUTCOME` after possible POST. Supervisor also treats invalid stdout or any unproven post-start failure as `UNKNOWN_OUTCOME`.
 - One OpenRouter `POST /api/v1/chat/completions` call, no retries, no tools, no streaming; must enforce `max_tokens` from the request and abort if the reported usage exceeds `budget.max_total_tokens`.
-- Status: **PENDING_IMPLEMENTATION** — the adapter is code and needs its own reviewed PR with offline tests (mocked HTTP). Not added here.
+- Status: **IMPLEMENTED OFFLINE / NOT AUTHORIZED** — the adapter is present in source and covered by mocked tests; no provider-side run or owner adoption is implied.
 
 ### 4.3 Token limit rationale
 
@@ -127,9 +127,9 @@ Contact/owner login: `PENDING_OWNER`.
 | Exit | stderr prefix | Meaning |
 |---|---|---|
 | 0 | — | one validated e0-state object printed to stdout |
-| 2 | `CAPTURE_ADAPTER_ERROR:` | definite failure (bad request/config, request not sent, HTTP != 200, invalid/oversized output, schema violation) |
+| 2 | `CAPTURE_ADAPTER_ERROR:` | provable pre-send failure only (invalid config/request, missing key, DNS failure, refused connection) |
 | 3 | `CAPTURE_ADAPTER_ERROR: unexpected <Type>` | unexpected internal exception (fail closed) |
-| 4 | `CAPTURE_ADAPTER_UNKNOWN_OUTCOME:` | timeout or connection lost **after send**: the provider may have processed/billed the call; outcome unknown. Never retried automatically |
+| 4 | `CAPTURE_ADAPTER_UNKNOWN_OUTCOME:` | possible post-send processing: timeout, wrapped connection reset, redirect, HTTP non-200 (including 500), invalid/oversized HTTP 200 output, invalid usage/schema; no automatic retry |
 
 Single attempt, no retries in all cases. `scripts/e0/execute_pilot.py` preserves adapter exit 4 as Pilot `UNKNOWN_OUTCOME` (CLI exit 4), not `FAILED` or `COMPLETED`. A bounded runner timeout is also conservatively `UNKNOWN_OUTCOME` because it cannot prove whether the request reached the provider. Neither status authorizes a Pilot or creates Evidence Lock.
 
@@ -138,9 +138,17 @@ Pilot `result.json` mapping (conservative: anything that cannot prove "no provid
 | Situation | Pilot status | CLI exit |
 |---|---|---|
 | adapter exit 0 + JSON stdout | `COMPLETED` | 0 |
-| adapter exit 2 (definite `CAPTURE_ADAPTER_ERROR`), preflight/authorization error, invalid stdout after exit 0 | `FAILED` | 1 |
-| adapter exit 4, 3, any other non-zero, killed by signal (negative code) | `UNKNOWN_OUTCOME` (`adapter_exit_code` recorded) | 4 |
+| trusted adapter exit 2 (proven pre-send `CAPTURE_ADAPTER_ERROR`) or preflight failure before adapter starts | `FAILED` | 1 |
+| adapter exit 4, 3, any other non-zero, killed by signal (negative code), malformed/non-object JSON stdout (`null`, array, scalar) after exit 0, failed output/result write after spawn | `UNKNOWN_OUTCOME` (`adapter_exit_code` when available) | 4 |
 | runner timeout, output cap exceeded | `UNKNOWN_OUTCOME` | 4 |
 | SIGINT / SIGTERM after adapter start | `UNKNOWN_OUTCOME` (before start: `FAILED`) | 4 / 1 |
 
-`UNKNOWN_OUTCOME` and `FAILED` results carry `package_sha256`, `attempt`, `request_sha256`. The reserved attempt stays consumed; nothing is retried automatically. Known limitation: SIGKILL of `execute_pilot.py` itself cannot be handled — only `reservation.json` (`RESERVED`) remains and must be read as unknown.
+`UNKNOWN_OUTCOME` and `FAILED` results carry `package_sha256`, `attempt`, `request_sha256`. Every allocated attempt stays spent. Reservation check, slot allocation, and fsynced `reservation.json` are performed under a single POSIX interprocess lock before spawning the adapter. Newly created output, package, and attempt directories are durably recorded using `fsync` on **each parent directory**, followed by fsync of the reservation file and containing attempt directory; any sync failure aborts before adapter spawn. An orphaned reservation is blocking `UNKNOWN_OUTCOME`, including after a failed `result.json` write. SIGKILL of the supervisor cannot create a false `FAILED`; the existing reservation blocks the next attempt.
+
+**Journal terminal seal (Pilot Safety follow-up):** new reservations declare `journal_protocol=terminal-seal-v1`. A `COMPLETED` or definitively `FAILED` result is trusted only when a separately fsynced `terminal-seal.json` binds the exact `result.json` SHA-256, attempt, package and status. A visible but unsealed terminal result is `UNKNOWN_OUTCOME` and blocks another attempt, including when an fsync fails after the result rename and the attempted rewrite as UNKNOWN also fails. Parent directory fsync is required on **every** output-root or package-root open, including after an earlier failed fsync that left the directory present. Historical rules apply **only if** `journal_protocol` is absent as a key **and** `terminal-seal.json` is absent. An explicitly present protocol field, including an unknown version or JSON `null`, blocks admission; a seal with no protocol field also blocks admission. The seal is a local disk-commit guard, **not** evidence that the external model completed a call.
+
+**One-pass admission under POSIX flock:** the supervisor scans existing `attempt-*` directories once while holding the package reservation lock. For `terminal-seal-v1`, it reads `reservation.json` (durably written before adapter launch); **any readable v1 reservation blocks the next slot**, regardless of `result.json` changing from `COMPLETED` to `UNKNOWN_OUTCOME` during the decision. A missing, unreadable, malformed, or non-regular reservation also fails closed. No second `classify_package` pass and no result/seal reread is used to authorize a new v1 slot. Only attempts without either marker are classified using the historical read-only outcome rules, using the reservation already read under the lock. Offline synthetic regressions assert no `attempt-002` and exactly one adapter call for mid-scan terminal status mutation and reservation read failure.
+
+**Automatic continuation gate (terminal-seal-v1):** a matching `terminal-seal.json` proves the *bytes* match, not that its final directory `fsync` succeeded. If the seal becomes visible but `fsync` raises and the UNKNOWN rewrite fails, the first CLI exits 4 and a second process cannot reconstruct that failure from file contents. Therefore **any prior terminal result (`COMPLETED` or `FAILED`) in a v1 journal blocks an automatic next attempt**, even with a valid seal and `max_runs=2`, until an independent owner review and a separate explicit authorization. This is intentionally more conservative than legacy journal semantics. No Pilot authority is implied.
+
+**Operational invariant for future F1-P-A (not execution authorization):** exactly **one executor**, **one persistent shared Pilot output directory** retained across working copies/restarts, and **`max_runs=1`**. File locking coordinates only processes that share the **same physical output directory**; separate clones with separate output roots can otherwise each reserve attempt-001. Do not delete/reset output roots, rotate working copies without their journal, or treat a Draft/green CI as owner adoption. This configuration remains `NOT_AUTHORIZED` until the separate A→B gates.

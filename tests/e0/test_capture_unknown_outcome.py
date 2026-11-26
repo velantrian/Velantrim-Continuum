@@ -43,6 +43,15 @@ class UnknownOutcomeTests(unittest.TestCase):
         with self.assertRaises(adapter.CaptureUnknownOutcome):
             self.transport_with(urllib.error.URLError(TimeoutError("t")))
 
+    def test_urlerror_wrapped_reset_is_unknown(self):
+        with self.assertRaises(adapter.CaptureUnknownOutcome):
+            self.transport_with(urllib.error.URLError(ConnectionResetError("after POST")))
+
+    def test_redirect_after_post_is_unknown(self):
+        handler = adapter._NoRedirect()
+        with self.assertRaises(adapter.CaptureUnknownOutcome):
+            handler.redirect_request(None, None, 302, "redirect", {}, "https://openrouter.ai/elsewhere")
+
     def test_reset_after_send_is_unknown(self):
         for exc in (ConnectionResetError(), http.client.RemoteDisconnected("x"), http.client.IncompleteRead(b"")):
             with self.subTest(exc=type(exc).__name__), self.assertRaises(adapter.CaptureUnknownOutcome):

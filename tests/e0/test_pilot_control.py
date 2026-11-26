@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -314,6 +315,221 @@ class ActivationIntegrationTests(unittest.TestCase):
             artifacts = {path.name for path in attempts[0].iterdir()}
             return proc, result, artifacts, int(counter.read_text()), len(attempts)
 
+    def test_synthetic_adapter_bad_stdout_is_unknown(self):
+        for value in ("not-json", "null", "[]", "[1]", "123", "true", '"string"'):
+            with self.subTest(value=value):
+                proc, result, artifacts, calls, attempts = self.run_synthetic_adapter(
+                    f"print({value!r})\n"
+                )
+                self.assert_unknown_bound(proc, result, artifacts, calls, attempts)
+
+    def _prewrite_race_probe(self, *, baseline_sha: str | None) -> dict:
+        """Pause before the first reservation write and race two supervisors.
+
+        In an old main checkout, reserve_attempt() releases its implicit
+        'check' before reservation.json is written, allowing the second slot.
+        In the patched checkout, the same interception happens under flock.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            repo = self.clone_repo(temp)
+            if baseline_sha is not None:
+                subprocess.run(["git", "checkout", "-q", baseline_sha], cwd=repo, check=True)
+            launches = temp / "launches"
+            launches.mkdir()
+            release_reservation = temp / "release-reservation"
+            release_adapter = temp / "release-adapter"
+            reservation_paused = temp / "reservation-paused"
+            second_at_reserve = temp / "second-at-reserve"
+            child = (
+                "import os,sys,time\n"
+                "from pathlib import Path\n"
+                "launches, release = Path(sys.argv[1]), Path(sys.argv[2])\n"
+                "(launches / str(os.getpid())).write_text('launched')\n"
+                "deadline = time.monotonic() + 18\n"
+                "while not release.exists() and time.monotonic() < deadline: time.sleep(.02)\n"
+                "print('{}')\n"
+            )
+            command = shlex.join([sys.executable, "-c", child, str(launches), str(release_adapter)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, timeout_seconds=24, max_runs=2
+            )
+            launcher = [
+                "--repo-root", str(repo),
+                "--manifest", str(manifest_path),
+                "--request", str(request),
+            ]
+            first_script = (
+                "import os,sys,time\n"
+                "from pathlib import Path\n"
+                "sys.path.insert(0, 'scripts/e0')\n"
+                "import execute_pilot as ep\n"
+                "original = ep.atomic_write_json\n"
+                "def paused_write(path, value):\n"
+                "    if path.name == 'reservation.json':\n"
+                "        Path(os.environ['RACE_PAUSED']).write_text('paused')\n"
+                "        release = Path(os.environ['RACE_RELEASE_RESERVATION'])\n"
+                "        deadline = time.monotonic() + 18\n"
+                "        while not release.exists() and time.monotonic() < deadline: time.sleep(.02)\n"
+                "        if not release.exists(): raise RuntimeError('reservation gate timeout')\n"
+                "    return original(path, value)\n"
+                "ep.atomic_write_json = paused_write\n"
+                "raise SystemExit(ep.main())\n"
+            )
+            second_script = (
+                "import os,sys\n"
+                "from pathlib import Path\n"
+                "sys.path.insert(0, 'scripts/e0')\n"
+                "import execute_pilot as ep\n"
+                "original = ep.reserve_attempt\n"
+                "def observed_reserve(*args, **kwargs):\n"
+                "    Path(os.environ['RACE_SECOND_READY']).write_text('entered')\n"
+                "    return original(*args, **kwargs)\n"
+                "ep.reserve_attempt = observed_reserve\n"
+                "raise SystemExit(ep.main())\n"
+            )
+            first_env = {
+                **os.environ,
+                "RACE_PAUSED": str(reservation_paused),
+                "RACE_RELEASE_RESERVATION": str(release_reservation),
+            }
+            second_env = {**os.environ, "RACE_SECOND_READY": str(second_at_reserve)}
+            first = subprocess.Popen(
+                [sys.executable, "-c", first_script, *launcher], cwd=repo, env=first_env,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            second = None
+            try:
+                deadline = time.monotonic() + 18
+                while not reservation_paused.exists() and first.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                self.assertTrue(reservation_paused.exists(), "first process never reached reservation.json write")
+                second = subprocess.Popen(
+                    [sys.executable, "-c", second_script, *launcher], cwd=repo, env=second_env,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                deadline = time.monotonic() + 18
+                while not second_at_reserve.exists() and second.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                self.assertTrue(second_at_reserve.exists(), "second process never attempted reservation")
+                # Allow the old unprotected implementation to reach attempt-002
+                # while the first reservation is deliberately not yet written.
+                package_root = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+                deadline = time.monotonic() + 3.0
+                # Do not stop at attempt-002: the older implementation creates
+                # its slot before the fake adapter process has started.
+                while not list(launches.iterdir()) and second.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                second_slot = (package_root / "attempt-002").exists()
+                launched_before_first_write = bool(list(launches.iterdir()))
+                # Free the first to complete the fsynced reservation. It will
+                # then launch a fake adapter held at a separate marker.
+                release_reservation.write_text("go")
+                if not second_slot:
+                    second_out, second_err = second.communicate(timeout=18)
+                else:
+                    second_out, second_err = "", ""
+                deadline = time.monotonic() + 10
+                while not list(launches.iterdir()) and first.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                release_adapter.write_text("go")
+                first_out, first_err = first.communicate(timeout=18)
+                if second_slot:
+                    second_out, second_err = second.communicate(timeout=18)
+                count = len(list(launches.iterdir()))
+                return {
+                    "second_slot": second_slot,
+                    "launched_before_first_write": launched_before_first_write,
+                    "adapter_calls": count,
+                    "second_rc": second.returncode,
+                    "second_stderr": second_err,
+                    "first_rc": first.returncode,
+                    "first_stderr": first_err,
+                }
+            finally:
+                release_reservation.write_text("go")
+                release_adapter.write_text("go")
+                for proc in (first, second):
+                    if proc is None:
+                        continue
+                    if proc.poll() is None:
+                        proc.kill()
+                    proc.communicate()
+
+    def assert_prewrite_reservation_is_protected(self, result: dict) -> None:
+        """One acceptance assertion shared by patched and historical code."""
+        self.assertFalse(result["second_slot"], result)
+        self.assertFalse(result["launched_before_first_write"], result)
+        self.assertEqual(result["adapter_calls"], 1, result)
+        self.assertNotEqual(result["second_rc"], 0, result)
+        self.assertIn("unresolved UNKNOWN_OUTCOME", result["second_stderr"], result)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX two-process reservation race")
+    def test_prewrite_reservation_race_passes_on_fixed_branch(self):
+        result = self._prewrite_race_probe(baseline_sha=None)
+        self.assert_prewrite_reservation_is_protected(result)
+        print("PREWRITE_RACE fixed HEAD: PASS (second adapter never ran)")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX two-process reservation race")
+    def test_prewrite_reservation_race_reproduces_failure_on_old_main(self):
+        old_main = "51d8ce16f3b13816165db0aa0adc5352feecf136"
+        result = self._prewrite_race_probe(baseline_sha=old_main)
+        # The same acceptance assertion must fail against historical main.
+        with self.assertRaises(AssertionError):
+            self.assert_prewrite_reservation_is_protected(result)
+        self.assertTrue(result["second_slot"], result)
+        self.assertTrue(result["launched_before_first_write"], result)
+        self.assertEqual(result["adapter_calls"], 2, result)
+        self.assertEqual(result["second_rc"], 0, result)
+        print(f"PREWRITE_RACE old main {old_main[:12]}: RED (second adapter launched before first reservation)")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX flock integration")
+    def test_concurrent_supervisors_share_reservation_and_second_never_starts(self):
+        """Two real processes, max_runs=2, common output directory, no provider."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            repo = self.clone_repo(temp)
+            calls = temp / "calls"
+            calls.mkdir()
+            release = temp / "release"
+            child = (
+                "import os,sys,time\n"
+                "from pathlib import Path\n"
+                "calls = Path(sys.argv[1]); release = Path(sys.argv[2])\n"
+                " (calls / ('called-' + str(os.getpid()))).write_text('started')\n"
+                "deadline = time.monotonic() + 15\n"
+                "while not release.exists() and time.monotonic() < deadline: time.sleep(.02)\n"
+                "print('{}')\n"
+            )
+            child = child.replace("\n (calls", "\n(calls")
+            command = shlex.join([sys.executable, "-c", child, str(calls), str(release)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, timeout_seconds=25, max_runs=2
+            )
+            argv = [sys.executable, "scripts/e0/execute_pilot.py", "--repo-root", str(repo),
+                    "--manifest", str(manifest_path), "--request", str(request)]
+            first = subprocess.Popen(argv, cwd=repo, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True)
+            try:
+                deadline = time.monotonic() + 15
+                while not list(calls.glob("called-*")) and first.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                self.assertEqual(len(list(calls.glob("called-*"))), 1, "first synthetic adapter did not start")
+                package_root = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+                self.assertTrue((package_root / "attempt-001" / "reservation.json").is_file())
+                second = subprocess.run(argv, cwd=repo, capture_output=True, text=True, timeout=15, check=False)
+                self.assertNotEqual(second.returncode, 0)
+                self.assertIn("unresolved UNKNOWN_OUTCOME", second.stderr)
+                self.assertEqual(len(list(calls.glob("called-*"))), 1, "second synthetic adapter started")
+                self.assertFalse((package_root / "attempt-002").exists())
+            finally:
+                release.write_text("go")
+                try:
+                    first.communicate(timeout=15)
+                except subprocess.TimeoutExpired:
+                    first.kill()
+                    first.communicate()
+
     def test_synthetic_adapter_success_completes_once(self):
         proc, result, artifacts, calls, attempts = self.run_synthetic_adapter(
             "import json; print(json.dumps({'ok': True}))\n"
@@ -543,6 +759,315 @@ class ActivationIntegrationTests(unittest.TestCase):
             self.assertEqual(after[1]["outcome"], "UNKNOWN_OUTCOME")  # orphan never rewritten
             self.assertEqual(int(counter.read_text()), 1)
 
+    def test_legacy_admission_requires_no_protocol_and_no_terminal_seal(self):
+        """Four isolated synthetic cases: three blocked, genuine legacy allowed."""
+        cases = (
+            ("unknown_version", "terminal-seal-v999", False, True),
+            ("explicit_null", None, False, True),
+            ("orphan_seal", "ABSENT", True, True),
+            ("valid_legacy", "ABSENT", False, False),
+        )
+        for name, protocol, keep_seal, blocked in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as temp_dir:
+                temp = Path(temp_dir)
+                repo = self.clone_repo(temp)
+                counter = temp / "adapter-calls.txt"
+                child = (
+                    "import json,sys\n"
+                    "from pathlib import Path\n"
+                    "p=Path(sys.argv[1]); p.write_text(str(int(p.read_text()) + 1 if p.exists() else 1))\n"
+                    "print(json.dumps({'ok': True}))\n"
+                )
+                command = shlex.join([sys.executable, "-c", child, str(counter)])
+                manifest_path, request, *_ = make_package_and_activation(
+                    repo, adapter_command=command, max_runs=2,
+                )
+                argv = [
+                    sys.executable, "scripts/e0/execute_pilot.py",
+                    "--repo-root", str(repo),
+                    "--manifest", str(manifest_path),
+                    "--request", str(request),
+                ]
+                first = subprocess.run(
+                    argv, cwd=repo, capture_output=True, text=True,
+                    timeout=25, check=False,
+                )
+                self.assertEqual(first.returncode, 0, first.stderr)
+                self.assertEqual(int(counter.read_text()), 1)
+                package = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+                att = package / "attempt-001"
+                self.assertEqual(
+                    json.loads((att / "result.json").read_text())["status"], "COMPLETED")
+                reservation_path = att / "reservation.json"
+                reservation = json.loads(reservation_path.read_text())
+                reservation.pop("journal_protocol")
+                if protocol != "ABSENT":
+                    reservation["journal_protocol"] = protocol
+                reservation_path.write_text(json.dumps(reservation) + "\n")
+                seal_path = att / "terminal-seal.json"
+                if not keep_seal:
+                    seal_path.unlink()
+                else:
+                    self.assertTrue(seal_path.is_file())
+
+                second = subprocess.run(
+                    argv, cwd=repo, capture_output=True, text=True,
+                    timeout=25, check=False,
+                )
+                if blocked:
+                    self.assertNotEqual(second.returncode, 0, second.stderr)
+                    self.assertIn("requires separate owner review", second.stderr)
+                    self.assertFalse((package / "attempt-002").exists())
+                    self.assertEqual(int(counter.read_text()), 1)
+                else:
+                    self.assertEqual(second.returncode, 0, second.stderr)
+                    self.assertTrue((package / "attempt-002" / "reservation.json").is_file())
+                    self.assertEqual(int(counter.read_text()), 2)
+
+    def test_terminal_seal_is_not_automatic_relaunch_permission(self):
+        """Even intact seal bytes cannot prove that directory fsync succeeded."""
+        h = "c" * 64
+        for status in ("COMPLETED", "FAILED"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve()
+                attempt_number, attempt_dir = execute_pilot.reserve_attempt(root, h, 2)
+                self.assertEqual(attempt_number, 1)
+                execute_pilot.write_terminal_result(attempt_dir, {
+                    "status": status, "attempt": 1, "package_sha256": h,
+                })
+                self.assertEqual(classify.classify_attempt(attempt_dir)["outcome"], status)
+                with self.assertRaisesRegex(execute_pilot.PreflightError, "requires separate owner review"):
+                    execute_pilot.reserve_attempt(root, h, 2)
+                self.assertFalse((root / h / "attempt-002").exists())
+
+    def test_new_journal_terminal_requires_matching_durable_seal(self):
+        h = "a" * 64
+        for status in ("COMPLETED", "FAILED"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                package = Path(tmp) / h
+                att = package / "attempt-001"
+                att.mkdir(parents=True)
+                reservation = {
+                    "journal_protocol": execute_pilot.TERMINAL_SEAL_PROTOCOL,
+                    "package_sha256": h, "attempt": 1,
+                }
+                (att / "reservation.json").write_text(json.dumps(reservation))
+                result = {"status": status, "attempt": 1, "package_sha256": h}
+                (att / "result.json").write_text(json.dumps(result))
+                self.assertEqual(classify.classify_attempt(att)["classification"],
+                                 "UNSEALED_TERMINAL_RESULT")
+                with self.assertRaisesRegex(execute_pilot.PreflightError, "unresolved UNKNOWN_OUTCOME"):
+                    execute_pilot.reserve_attempt(Path(tmp), h, 2)
+                payload = (att / "result.json").read_bytes()
+                seal = {
+                    "protocol": execute_pilot.TERMINAL_SEAL_PROTOCOL,
+                    "status": status, "attempt": 1, "package_sha256": h,
+                    "result_sha256": hashlib.sha256(payload).hexdigest(),
+                }
+                (att / "terminal-seal.json").write_text(json.dumps(seal))
+                self.assertEqual(classify.classify_attempt(att)["outcome"], status)
+                seal["result_sha256"] = "0" * 64
+                (att / "terminal-seal.json").write_text(json.dumps(seal))
+                self.assertEqual(classify.classify_attempt(att)["outcome"], "UNKNOWN_OUTCOME")
+
+    def test_after_completed_rename_fsync_failure_retry_stays_blocked(self):
+        """Mock disk fsync failure after publishing COMPLETED, and again for UNKNOWN.
+
+        The first synthetic adapter runs once. Later CLI has exit 4 and no
+        terminal seal; even a readable COMPLETED result must not enable run 2.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            temp = Path(tmp)
+            repo = self.clone_repo(temp)
+            calls = temp / "provider-calls.txt"
+            child = ("import sys,json\n"
+                     "from pathlib import Path\n"
+                     "p=Path(sys.argv[1]);p.write_text(str(int(p.read_text())+1 if p.exists() else 1))\n"
+                     "print(json.dumps({'ok': True}))\n")
+            command = shlex.join([sys.executable, "-c", child, str(calls)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, max_runs=2,
+            )
+            script = (
+                "import sys,os,json\n"
+                "from pathlib import Path\n"
+                "sys.path.insert(0,'scripts/e0')\n"
+                "import execute_pilot as ep\n"
+                "original=ep._fsync_directory\n"
+                "original_json=ep.atomic_write_json\n"
+                "def flaky(path):\n"
+                "    result=Path(path)/'result.json'\n"
+                "    if result.is_file() and json.loads(result.read_text()).get('status')=='COMPLETED':\n"
+                "        raise OSError('injected fsync after COMPLETED rename')\n"
+                "    return original(path)\n"
+                "def failed_unknown_write(path, payload):\n"
+                "    if path.name=='result.json' and payload.get('status')=='UNKNOWN_OUTCOME':\n"
+                "        raise OSError('injected failure to rewrite UNKNOWN_OUTCOME')\n"
+                "    return original_json(path,payload)\n"
+                "ep._fsync_directory=flaky\n"
+                "ep.atomic_write_json=failed_unknown_write\n"
+                "raise SystemExit(ep.main())\n"
+            )
+            argv = ["--repo-root", str(repo), "--manifest", str(manifest_path),
+                    "--request", str(request)]
+            first = subprocess.run(
+                [sys.executable, "-c", script, *argv], cwd=repo,
+                text=True, capture_output=True, timeout=25, check=False,
+            )
+            self.assertEqual(first.returncode, 4, first.stderr)
+            self.assertEqual(int(calls.read_text()), 1)
+            package = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+            att = package / "attempt-001"
+            self.assertEqual(json.loads((att / "result.json").read_text())["status"], "COMPLETED")
+            self.assertFalse((att / "terminal-seal.json").exists())
+            self.assertEqual(classify.classify_attempt(att)["classification"],
+                             "UNSEALED_TERMINAL_RESULT")
+            second = subprocess.run(
+                [sys.executable, "scripts/e0/execute_pilot.py", *argv], cwd=repo,
+                text=True, capture_output=True, timeout=25, check=False,
+            )
+            self.assertNotEqual(second.returncode, 0)
+            self.assertIn("unresolved UNKNOWN_OUTCOME", second.stderr)
+            self.assertEqual(int(calls.read_text()), 1)
+            self.assertFalse((package / "attempt-002").exists())
+
+    def test_after_terminal_seal_rename_fsync_failure_does_not_retry(self):
+        """Seal bytes may be visible despite a failed fsync and failed UNKNOWN rewrite.
+
+        Acceptance: first supervisor returns 4, second supervisor using the SAME
+        journal and max_runs=2 must not even spawn the synthetic adapter.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            temp = Path(tmp)
+            repo = self.clone_repo(temp)
+            counter = temp / "synthetic-adapter-calls.txt"
+            child = (
+                "import json,sys\n"
+                "from pathlib import Path\n"
+                "p=Path(sys.argv[1]); p.write_text(str(int(p.read_text())+1 if p.exists() else 1))\n"
+                "print(json.dumps({'ok': True}))\n"
+            )
+            command = shlex.join([sys.executable, "-c", child, str(counter)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, max_runs=2,
+            )
+            injected = (
+                "import sys,os\n"
+                "from pathlib import Path\n"
+                "sys.path.insert(0,'scripts/e0')\n"
+                "import execute_pilot as ep\n"
+                "original_fsync=ep._fsync_directory\n"
+                "original_json=ep.atomic_write_json\n"
+                "def fail_after_seal_is_visible(path):\n"
+                "    if (Path(path)/'terminal-seal.json').is_file():\n"
+                "        raise OSError('injected fsync failure after terminal-seal.json rename')\n"
+                "    return original_fsync(path)\n"
+                "def fail_unknown_rewrite(path, payload):\n"
+                "    if path.name=='result.json' and payload.get('status')=='UNKNOWN_OUTCOME':\n"
+                "        raise OSError('injected UNKNOWN_OUTCOME rewrite failure')\n"
+                "    return original_json(path, payload)\n"
+                "ep._fsync_directory=fail_after_seal_is_visible\n"
+                "ep.atomic_write_json=fail_unknown_rewrite\n"
+                "raise SystemExit(ep.main())\n"
+            )
+            args = ["--repo-root", str(repo), "--manifest", str(manifest_path),
+                    "--request", str(request)]
+            first = subprocess.run(
+                [sys.executable, "-c", injected, *args], cwd=repo,
+                text=True, capture_output=True, timeout=25, check=False,
+            )
+            self.assertEqual(first.returncode, 4, first.stderr)
+            self.assertEqual(int(counter.read_text()), 1)
+            package = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+            attempt = package / "attempt-001"
+            self.assertEqual(json.loads((attempt / "result.json").read_text())["status"], "COMPLETED")
+            self.assertTrue((attempt / "terminal-seal.json").is_file())
+            self.assertEqual(classify.classify_attempt(attempt)["outcome"], "COMPLETED")
+            second = subprocess.run(
+                [sys.executable, "scripts/e0/execute_pilot.py", *args],
+                cwd=repo, text=True, capture_output=True, timeout=25, check=False,
+            )
+            self.assertNotEqual(second.returncode, 0, second.stderr)
+            self.assertIn("requires separate owner review", second.stderr)
+            self.assertEqual(int(counter.read_text()), 1, "second synthetic adapter must not start")
+            self.assertFalse((package / "attempt-002").exists())
+
+    def _assert_v1_admission_refuses_second_adapter(self, fault: str) -> None:
+        """One synthetic call, then inject a fault at the second admission scan."""
+        with tempfile.TemporaryDirectory() as tmp:
+            temp = Path(tmp)
+            repo = self.clone_repo(temp)
+            calls = temp / "synthetic-provider-count.txt"
+            child = (
+                "import json,sys\n"
+                "from pathlib import Path\n"
+                "p=Path(sys.argv[1]); p.write_text(str(int(p.read_text())+1 if p.exists() else 1))\n"
+                "print(json.dumps({'ok': True}))\n"
+            )
+            command = shlex.join([sys.executable, "-c", child, str(calls)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, max_runs=2,
+            )
+            args = ["--repo-root", str(repo), "--manifest", str(manifest_path),
+                    "--request", str(request)]
+            first = subprocess.run(
+                [sys.executable, "scripts/e0/execute_pilot.py", *args],
+                cwd=repo, capture_output=True, text=True, timeout=25, check=False,
+            )
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(int(calls.read_text()), 1)
+            package = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+            attempt = package / "attempt-001"
+            result_path = attempt / "result.json"
+            self.assertEqual(json.loads(result_path.read_text())["status"], "COMPLETED")
+            self.assertTrue((attempt / "reservation.json").exists())
+            injected = (
+                "import sys,json\n"
+                "from pathlib import Path\n"
+                "fault=sys.argv.pop(1)\n"
+                "sys.path.insert(0,'scripts/e0')\n"
+                "import execute_pilot as ep\n"
+                "original=ep.read_regular_file_once\n"
+                "changed=[]\n"
+                "def fault_read(path, *, label):\n"
+                "    if label=='Pilot reservation':\n"
+                "        if fault=='unreadable':\n"
+                "            raise OSError('injected reservation read failure')\n"
+                "        if not changed:\n"
+                "            result=Path(path).parent/'result.json'\n"
+                "            data=json.loads(result.read_text())\n"
+                "            assert data['status']=='COMPLETED'\n"
+                "            data['status']='UNKNOWN_OUTCOME'\n"
+                "            result.write_text(json.dumps(data))\n"
+                "            changed.append(True)\n"
+                "    return original(path,label=label)\n"
+                "ep.read_regular_file_once=fault_read\n"
+                "def forbidden_classifier(_path):\n"
+                "    raise AssertionError('v1 admission must not inspect mutable result.json')\n"
+                "ep.classify_attempt=forbidden_classifier\n"
+                "raise SystemExit(ep.main())\n"
+            )
+            second = subprocess.run(
+                [sys.executable, "-c", injected, fault, *args],
+                cwd=repo, capture_output=True, text=True, timeout=25, check=False,
+            )
+            self.assertNotEqual(second.returncode, 0, second.stderr)
+            self.assertIn("Pilot refuses a new attempt", second.stderr)
+            if fault == "unreadable":
+                self.assertIn("reservation.json unreadable", second.stderr)
+                self.assertEqual(json.loads(result_path.read_text())["status"], "COMPLETED")
+            else:
+                self.assertIn("v1 reservation", second.stderr)
+                self.assertEqual(json.loads(result_path.read_text())["status"], "UNKNOWN_OUTCOME")
+            self.assertFalse((package / "attempt-002").exists())
+            self.assertEqual(int(calls.read_text()), 1, "second synthetic adapter must not start")
+
+    def test_v1_admission_blocks_completed_to_unknown_mid_scan(self):
+        self._assert_v1_admission_refuses_second_adapter("mutate")
+
+    def test_v1_admission_blocks_unreadable_reservation(self):
+        self._assert_v1_admission_refuses_second_adapter("unreadable")
+
     def test_classifier_reservation_incomplete_and_corrupt_result(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             pkg = Path(temp_dir)
@@ -679,14 +1204,94 @@ class RunAdapterTests(unittest.TestCase):
 
 
 class ExecutePilotTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "POSIX directory fsync")
+    def test_new_journal_parent_directories_are_fsynced(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir) / "repo"
+            repo.mkdir()
+            original = execute_pilot._fsync_directory
+            with mock.patch.object(execute_pilot, "_fsync_directory", wraps=original) as spy:
+                output_root = execute_pilot.ensure_output_root(repo.resolve())
+                attempt, attempt_dir = execute_pilot.reserve_attempt(output_root, "f" * 64, 2)
+            self.assertEqual(attempt, 1)
+            self.assertTrue((attempt_dir / "reservation.json").is_file())
+            synced = [args[0] for args, _ in (item for item in spy.call_args_list)]
+            self.assertIn(repo.parent, synced)  # output directory entry
+            self.assertIn(output_root, synced)  # package directory entry
+            self.assertIn(output_root / ("f" * 64), synced)  # attempt and lock entries
+            self.assertIn(attempt_dir, synced)  # atomic reservation rename
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory fsync")
+    @unittest.skipUnless(os.name == "posix", "POSIX directory fsync")
+    def test_reopened_output_root_retries_required_parent_fsync(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            target_parent = root.resolve()
+            original = execute_pilot._fsync_directory
+            for run in (1, 2):
+                with self.subTest(run=run):
+                    def failing(path):
+                        if path == target_parent:
+                            raise OSError("persistent output parent fsync fault")
+                        return original(path)
+                    with mock.patch.object(execute_pilot, "_fsync_directory", side_effect=failing):
+                        with self.assertRaisesRegex(OSError, "persistent output parent fsync fault"):
+                            execute_pilot.ensure_output_root(repo.resolve())
+                    self.assertTrue((root / preflight.PILOT_OUTPUT_DESTINATION).is_dir())
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory fsync")
+    def test_reopened_package_root_retries_required_parent_fsync(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            h = "b" * 64
+            original = execute_pilot._fsync_directory
+            for run in (1, 2):
+                with self.subTest(run=run):
+                    def failing(path):
+                        if path == root:
+                            raise OSError("persistent package parent fsync fault")
+                        return original(path)
+                    with mock.patch.object(execute_pilot, "_fsync_directory", side_effect=failing):
+                        with self.assertRaisesRegex(OSError, "persistent package parent fsync fault"):
+                            execute_pilot.reserve_attempt(root, h, 1)
+                    self.assertTrue((root / h).is_dir())
+                    self.assertFalse((root / h / "attempt-001").exists())
+
+    def test_fsync_failure_prevents_durable_reservation_completion(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with mock.patch.object(execute_pilot, "_fsync_directory", side_effect=OSError("simulated fsync failure")):
+                with self.assertRaisesRegex(OSError, "simulated fsync failure"):
+                    execute_pilot.reserve_attempt(root, "a" * 64, 2)
+            self.assertFalse((root / ("a" * 64) / "attempt-001" / "reservation.json").exists())
+
     def test_max_runs_reservation_is_atomic_and_fail_closed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             attempt, first = execute_pilot.reserve_attempt(root, "a" * 64, 1)
             self.assertEqual(attempt, 1)
             self.assertTrue(first.is_dir())
-            with self.assertRaisesRegex(preflight.PreflightError, "max_runs exhausted"):
+            self.assertTrue((first / "reservation.json").is_file())
+            with self.assertRaisesRegex(preflight.PreflightError, "unresolved UNKNOWN_OUTCOME"):
                 execute_pilot.reserve_attempt(root, "a" * 64, 1)
+
+    def test_failed_result_write_preserves_blocking_reservation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            package_hash = "a" * 64
+            attempt, attempt_dir = execute_pilot.reserve_attempt(root, package_hash, 2)
+            self.assertEqual(attempt, 1)
+            with mock.patch.object(execute_pilot, "atomic_write_json", side_effect=OSError("write failed")):
+                execute_pilot._write_result(attempt_dir, {
+                    "status": "UNKNOWN_OUTCOME", "attempt": attempt, "package_sha256": package_hash,
+                })
+            self.assertFalse((attempt_dir / "result.json").exists())
+            self.assertTrue((attempt_dir / "reservation.json").is_file())
+            with self.assertRaisesRegex(preflight.PreflightError, "unresolved UNKNOWN_OUTCOME"):
+                execute_pilot.reserve_attempt(root, package_hash, 2)
+            self.assertFalse((root / package_hash / "attempt-002").exists())
 
     def test_output_root_symlink_escape_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp_dir:

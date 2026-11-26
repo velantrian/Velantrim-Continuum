@@ -25,11 +25,14 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
 KNOWN_RESULT_STATUSES = {"COMPLETED", "FAILED", "UNKNOWN_OUTCOME"}
+TERMINAL_SEAL_PROTOCOL = "terminal-seal-v1"
+_RESERVATION_NOT_SUPPLIED = object()
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -40,7 +43,11 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def classify_attempt(attempt_dir: Path) -> dict[str, Any]:
+def classify_attempt(
+    attempt_dir: Path,
+    *,
+    reservation_override: dict[str, Any] | object = _RESERVATION_NOT_SUPPLIED,
+) -> dict[str, Any]:
     name = attempt_dir.name
     try:
         number = int(name.split("-", 1)[1])
@@ -49,7 +56,14 @@ def classify_attempt(attempt_dir: Path) -> dict[str, Any]:
     entry: dict[str, Any] = {"attempt_dir": str(attempt_dir), "attempt": number, "spent": True}
     reservation_path = attempt_dir / "reservation.json"
     result_path = attempt_dir / "result.json"
-    reservation = _read_json(reservation_path) if reservation_path.is_file() else None
+    # A supervisor already holding package flock can supply the reservation
+    # read once during admission. Standalone read-only classification remains
+    # backwards compatible with its original file-reading behavior.
+    reservation = (
+        (_read_json(reservation_path) if reservation_path.is_file() else None)
+        if reservation_override is _RESERVATION_NOT_SUPPLIED
+        else reservation_override
+    )
     if result_path.exists():
         result = _read_json(result_path)
         status = result.get("status") if result else None
@@ -75,6 +89,31 @@ def classify_attempt(attempt_dir: Path) -> dict[str, Any]:
                 problems.append("reservation attempt does not match directory")
         if problems:
             entry.update(classification="BINDING_MISMATCH", outcome="UNKNOWN_OUTCOME", problems=problems)
+            return entry
+        # Legacy reservations are interpreted as before. For new reservations,
+        # terminal status is trusted ONLY with a durable matching seal. A failed
+        # fsync after result.json rename cannot masquerade as COMPLETED.
+        if (reservation is not None and
+                reservation.get("journal_protocol") == TERMINAL_SEAL_PROTOCOL and
+                status in {"COMPLETED", "FAILED"}):
+            seal = _read_json(attempt_dir / "terminal-seal.json")
+            try:
+                digest = hashlib.sha256(result_path.read_bytes()).hexdigest()
+            except OSError:
+                digest = None
+            expected = {
+                "protocol": TERMINAL_SEAL_PROTOCOL,
+                "status": status,
+                "attempt": number,
+                "package_sha256": package_hash,
+                "result_sha256": digest,
+            }
+            if digest is None or seal != expected:
+                entry.update(
+                    classification="UNSEALED_TERMINAL_RESULT",
+                    outcome="UNKNOWN_OUTCOME",
+                    reason="terminal result has no matching durable commit seal",
+                )
         return entry
     if reservation_path.exists():
         entry.update(classification="ORPHANED_RESERVATION", outcome="UNKNOWN_OUTCOME",
