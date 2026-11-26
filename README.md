@@ -27,6 +27,8 @@ The project does **not** assume that a complex runtime is necessary. A careful c
 **⚙ Machine-readable current state:** [`project-state.json`](project-state.json)  
 **📊 Current status:** [`STATUS.md`](STATUS.md)
 
+**📓 Project history:** [Project journal](docs/PROJECT_JOURNAL.md)
+
 ---
 
 ## 👋 What this project is
