@@ -927,6 +927,81 @@ class ActivationIntegrationTests(unittest.TestCase):
             self.assertEqual(int(counter.read_text()), 1, "second synthetic adapter must not start")
             self.assertFalse((package / "attempt-002").exists())
 
+    def _assert_v1_admission_refuses_second_adapter(self, fault: str) -> None:
+        """One synthetic call, then inject a fault at the second admission scan."""
+        with tempfile.TemporaryDirectory() as tmp:
+            temp = Path(tmp)
+            repo = self.clone_repo(temp)
+            calls = temp / "synthetic-provider-count.txt"
+            child = (
+                "import json,sys\n"
+                "from pathlib import Path\n"
+                "p=Path(sys.argv[1]); p.write_text(str(int(p.read_text())+1 if p.exists() else 1))\n"
+                "print(json.dumps({'ok': True}))\n"
+            )
+            command = shlex.join([sys.executable, "-c", child, str(calls)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, max_runs=2,
+            )
+            args = ["--repo-root", str(repo), "--manifest", str(manifest_path),
+                    "--request", str(request)]
+            first = subprocess.run(
+                [sys.executable, "scripts/e0/execute_pilot.py", *args],
+                cwd=repo, capture_output=True, text=True, timeout=25, check=False,
+            )
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(int(calls.read_text()), 1)
+            package = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+            attempt = package / "attempt-001"
+            result_path = attempt / "result.json"
+            self.assertEqual(json.loads(result_path.read_text())["status"], "COMPLETED")
+            self.assertTrue((attempt / "reservation.json").exists())
+            injected = (
+                "import sys,json\n"
+                "from pathlib import Path\n"
+                "sys.path.insert(0,'scripts/e0')\n"
+                "import execute_pilot as ep\n"
+                "original=ep.read_regular_file_once\n"
+                "changed=[]\n"
+                "def fault_read(path, *, label):\n"
+                "    if label=='Pilot reservation':\n"
+                "        if sys.argv[1]=='unreadable':\n"
+                "            raise OSError('injected reservation read failure')\n"
+                "        if not changed:\n"
+                "            result=Path(path).parent/'result.json'\n"
+                "            data=json.loads(result.read_text())\n"
+                "            assert data['status']=='COMPLETED'\n"
+                "            data['status']='UNKNOWN_OUTCOME'\n"
+                "            result.write_text(json.dumps(data))\n"
+                "            changed.append(True)\n"
+                "    return original(path,label=label)\n"
+                "ep.read_regular_file_once=fault_read\n"
+                "def forbidden_classifier(_path):\n"
+                "    raise AssertionError('v1 admission must not inspect mutable result.json')\n"
+                "ep.classify_attempt=forbidden_classifier\n"
+                "raise SystemExit(ep.main())\n"
+            )
+            second = subprocess.run(
+                [sys.executable, "-c", injected, fault, *args],
+                cwd=repo, capture_output=True, text=True, timeout=25, check=False,
+            )
+            self.assertNotEqual(second.returncode, 0, second.stderr)
+            self.assertIn("Pilot refuses a new attempt", second.stderr)
+            if fault == "unreadable":
+                self.assertIn("reservation.json unreadable", second.stderr)
+                self.assertEqual(json.loads(result_path.read_text())["status"], "COMPLETED")
+            else:
+                self.assertIn("v1 reservation", second.stderr)
+                self.assertEqual(json.loads(result_path.read_text())["status"], "UNKNOWN_OUTCOME")
+            self.assertFalse((package / "attempt-002").exists())
+            self.assertEqual(int(calls.read_text()), 1, "second synthetic adapter must not start")
+
+    def test_v1_admission_blocks_completed_to_unknown_mid_scan(self):
+        self._assert_v1_admission_refuses_second_adapter("mutate")
+
+    def test_v1_admission_blocks_unreadable_reservation(self):
+        self._assert_v1_admission_refuses_second_adapter("unreadable")
+
     def test_classifier_reservation_incomplete_and_corrupt_result(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             pkg = Path(temp_dir)
