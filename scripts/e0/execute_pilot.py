@@ -41,8 +41,8 @@ class PilotInterrupted(BaseException):
     """SIGINT/SIGTERM received; BaseException so it is never mistaken for a definite error."""
 
 
-# Adapter exit codes that prove a definite outcome. 0 = response; 2 = definite error
-# (CAPTURE_ADAPTER_ERROR: request not sent, HTTP != 200, invalid output, ...).
+# Adapter exit codes that prove a definite outcome. 0 = response; 2 = proven
+# pre-send failure (CAPTURE_ADAPTER_ERROR: request was not sent).
 # Every other code (4 UNKNOWN_OUTCOME, 3 unexpected exception, 1 uncaught crash,
 # negative = killed by signal) cannot prove the provider call did not happen and is
 # preserved conservatively as UNKNOWN_OUTCOME.
@@ -53,11 +53,34 @@ def _raise_interrupted(signum: int, _frame: Any) -> None:
     raise PilotInterrupted(f"received signal {signum}")
 
 
+def _fsync_directory(path: Path) -> None:
+    """Persist directory entries after mkdir/rename, or fail before Pilot spawn.
+
+    POSIX flock is already required for the Pilot journal. Do not silently
+    downgrade durability guarantees on an unsupported platform/filesystem.
+    """
+    if os.name != "posix":
+        raise PreflightError("durable Pilot journal directory fsync requires POSIX")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    directory_fd = os.open(path, flags)
+    try:
+        if not stat.S_ISDIR(os.fstat(directory_fd).st_mode):
+            raise PreflightError(f"Pilot journal parent must be a directory: {path}")
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     parent = path.parent
     if parent.is_symlink():
         raise PreflightError(f"Pilot output parent must not be a symlink: {parent}")
-    parent.mkdir(parents=True, exist_ok=True)
+    # Journal directories must be created and fsynced explicitly before
+    # invoking this writer; implicit mkdir would leave unflushed parents.
+    if not parent.is_dir():
+        raise PreflightError(f"Pilot output parent is not a directory: {parent}")
     resolved_parent = parent.resolve()
     if resolved_parent != parent:
         raise PreflightError(f"Pilot output parent resolved unexpectedly: {parent}")
@@ -76,17 +99,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 pass
             raise
         os.replace(temporary, path)
-        # fsync the directory as well as the file: an atomic rename alone
-        # does not make the reservation durable after a power failure.
-        if os.name == "posix":
-            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-            if hasattr(os, "O_NOFOLLOW"):
-                flags |= os.O_NOFOLLOW
-            directory_fd = os.open(parent, flags)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+        # Persist the renamed journal entry as well as the file contents.
+        _fsync_directory(parent)
     finally:
         try:
             temporary.unlink()
@@ -132,7 +146,11 @@ def ensure_output_root(root: Path) -> Path:
     lexical = root.parent / PILOT_OUTPUT_DESTINATION
     if lexical.exists() and lexical.is_symlink():
         raise PreflightError("Pilot output root must not be a symlink")
-    lexical.mkdir(mode=0o700, exist_ok=True)
+    try:
+        lexical.mkdir(mode=0o700)
+        new_output_root = True
+    except FileExistsError:
+        new_output_root = False
     if lexical.is_symlink():
         raise PreflightError("Pilot output root became a symlink")
     resolved = lexical.resolve()
@@ -140,6 +158,9 @@ def ensure_output_root(root: Path) -> Path:
         raise PreflightError("Pilot output root resolves inside the Git repository")
     if resolved != lexical:
         raise PreflightError("Pilot output root must resolve to its dedicated sibling path")
+    if new_output_root:
+        # Persist the new output-root entry in the repository's parent dir.
+        _fsync_directory(lexical.parent)
     return resolved
 
 
@@ -165,6 +186,8 @@ def package_reservation_lock(package_root: Path):
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise PreflightError("Pilot reservation lock must be a regular file")
+        # Persist the lock directory entry before it coordinates a slot.
+        _fsync_directory(package_root)
         fcntl.flock(fd, fcntl.LOCK_EX)
         try:
             yield
@@ -184,9 +207,17 @@ def reserve_attempt(
     package_root = output_root / package_hash
     if package_root.exists() and package_root.is_symlink():
         raise PreflightError("Pilot package root must not be a symlink")
-    package_root.mkdir(mode=0o700, exist_ok=True)
+    try:
+        package_root.mkdir(mode=0o700)
+        new_package_root = True
+    except FileExistsError:
+        new_package_root = False
     if package_root.is_symlink() or package_root.resolve() != package_root:
         raise PreflightError("Pilot package root must remain a real directory")
+    if new_package_root:
+        # A persisted reservation cannot be found after reboot unless its
+        # package-directory entry also survived.
+        _fsync_directory(output_root)
     with package_reservation_lock(package_root):
         # The journal check and the durable blocking reservation form one
         # interprocess critical section. No adapter may start before it ends.
@@ -206,6 +237,9 @@ def reserve_attempt(
                 continue
             if attempt_dir.is_symlink() or attempt_dir.resolve() != attempt_dir:
                 raise PreflightError("Pilot attempt directory must remain a real directory")
+            # Persist the newly allocated attempt directory before its
+            # reservation.json is fsynced and before releasing the lock.
+            _fsync_directory(package_root)
             reservation = {
                 **(reservation_metadata or {}),
                 "package_sha256": package_hash,
@@ -337,7 +371,9 @@ def main() -> int:
         try:
             response = json.loads(stdout)
         except json.JSONDecodeError as exc:
-            raise AdapterError(f"adapter stdout is not JSON: {exc}") from exc
+            raise PilotUnknownOutcome(f"adapter stdout is not JSON: {exc}") from exc
+        if not isinstance(response, dict):
+            raise PilotUnknownOutcome("adapter stdout must contain exactly one JSON object")
 
         metrics = {
             "latency_ms": {"provenance": "MEASURED", "value": elapsed_ms, "unit": "ms"},

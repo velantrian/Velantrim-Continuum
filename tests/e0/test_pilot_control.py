@@ -316,10 +316,165 @@ class ActivationIntegrationTests(unittest.TestCase):
             return proc, result, artifacts, int(counter.read_text()), len(attempts)
 
     def test_synthetic_adapter_bad_stdout_is_unknown(self):
-        proc, result, artifacts, calls, attempts = self.run_synthetic_adapter(
-            "print('not-json')\n"
-        )
-        self.assert_unknown_bound(proc, result, artifacts, calls, attempts)
+        for value in ("not-json", "null", "[]", "[1]", "123", "true", '"string"'):
+            with self.subTest(value=value):
+                proc, result, artifacts, calls, attempts = self.run_synthetic_adapter(
+                    f"print({value!r})\n"
+                )
+                self.assert_unknown_bound(proc, result, artifacts, calls, attempts)
+
+    def _prewrite_race_probe(self, *, baseline_sha: str | None) -> dict:
+        """Pause before the first reservation write and race two supervisors.
+
+        In an old main checkout, reserve_attempt() releases its implicit
+        'check' before reservation.json is written, allowing the second slot.
+        In the patched checkout, the same interception happens under flock.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            repo = self.clone_repo(temp)
+            if baseline_sha is not None:
+                subprocess.run(["git", "checkout", "-q", baseline_sha], cwd=repo, check=True)
+            launches = temp / "launches"
+            launches.mkdir()
+            release_reservation = temp / "release-reservation"
+            release_adapter = temp / "release-adapter"
+            reservation_paused = temp / "reservation-paused"
+            second_at_reserve = temp / "second-at-reserve"
+            child = (
+                "import os,sys,time\n"
+                "from pathlib import Path\n"
+                "launches, release = Path(sys.argv[1]), Path(sys.argv[2])\n"
+                "(launches / str(os.getpid())).write_text('launched')\n"
+                "deadline = time.monotonic() + 18\n"
+                "while not release.exists() and time.monotonic() < deadline: time.sleep(.02)\n"
+                "print('{}')\n"
+            )
+            command = shlex.join([sys.executable, "-c", child, str(launches), str(release_adapter)])
+            manifest_path, request, *_ = make_package_and_activation(
+                repo, adapter_command=command, timeout_seconds=24, max_runs=2
+            )
+            launcher = [
+                "--repo-root", str(repo),
+                "--manifest", str(manifest_path),
+                "--request", str(request),
+            ]
+            first_script = (
+                "import os,sys,time\n"
+                "from pathlib import Path\n"
+                "sys.path.insert(0, 'scripts/e0')\n"
+                "import execute_pilot as ep\n"
+                "original = ep.atomic_write_json\n"
+                "def paused_write(path, value):\n"
+                "    if path.name == 'reservation.json':\n"
+                "        Path(os.environ['RACE_PAUSED']).write_text('paused')\n"
+                "        release = Path(os.environ['RACE_RELEASE_RESERVATION'])\n"
+                "        deadline = time.monotonic() + 18\n"
+                "        while not release.exists() and time.monotonic() < deadline: time.sleep(.02)\n"
+                "        if not release.exists(): raise RuntimeError('reservation gate timeout')\n"
+                "    return original(path, value)\n"
+                "ep.atomic_write_json = paused_write\n"
+                "raise SystemExit(ep.main())\n"
+            )
+            second_script = (
+                "import os,sys\n"
+                "from pathlib import Path\n"
+                "sys.path.insert(0, 'scripts/e0')\n"
+                "import execute_pilot as ep\n"
+                "original = ep.reserve_attempt\n"
+                "def observed_reserve(*args, **kwargs):\n"
+                "    Path(os.environ['RACE_SECOND_READY']).write_text('entered')\n"
+                "    return original(*args, **kwargs)\n"
+                "ep.reserve_attempt = observed_reserve\n"
+                "raise SystemExit(ep.main())\n"
+            )
+            first_env = {
+                **os.environ,
+                "RACE_PAUSED": str(reservation_paused),
+                "RACE_RELEASE_RESERVATION": str(release_reservation),
+            }
+            second_env = {**os.environ, "RACE_SECOND_READY": str(second_at_reserve)}
+            first = subprocess.Popen(
+                [sys.executable, "-c", first_script, *launcher], cwd=repo, env=first_env,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            second = None
+            try:
+                deadline = time.monotonic() + 18
+                while not reservation_paused.exists() and first.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                self.assertTrue(reservation_paused.exists(), "first process never reached reservation.json write")
+                second = subprocess.Popen(
+                    [sys.executable, "-c", second_script, *launcher], cwd=repo, env=second_env,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                deadline = time.monotonic() + 18
+                while not second_at_reserve.exists() and second.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                self.assertTrue(second_at_reserve.exists(), "second process never attempted reservation")
+                # Allow the old unprotected implementation to reach attempt-002
+                # while the first reservation is deliberately not yet written.
+                package_root = next((temp / preflight.PILOT_OUTPUT_DESTINATION).glob("*"))
+                deadline = time.monotonic() + 1.3
+                while time.monotonic() < deadline:
+                    if (package_root / "attempt-002").exists() or list(launches.iterdir()):
+                        break
+                    time.sleep(.02)
+                second_slot = (package_root / "attempt-002").exists()
+                launched_before_first_write = bool(list(launches.iterdir()))
+                # Free the first to complete the fsynced reservation. It will
+                # then launch a fake adapter held at a separate marker.
+                release_reservation.write_text("go")
+                if not second_slot:
+                    second_out, second_err = second.communicate(timeout=18)
+                else:
+                    second_out, second_err = "", ""
+                deadline = time.monotonic() + 10
+                while not list(launches.iterdir()) and first.poll() is None and time.monotonic() < deadline:
+                    time.sleep(.02)
+                release_adapter.write_text("go")
+                first_out, first_err = first.communicate(timeout=18)
+                if second_slot:
+                    second_out, second_err = second.communicate(timeout=18)
+                count = len(list(launches.iterdir()))
+                return {
+                    "second_slot": second_slot,
+                    "launched_before_first_write": launched_before_first_write,
+                    "adapter_calls": count,
+                    "second_rc": second.returncode,
+                    "second_stderr": second_err,
+                    "first_rc": first.returncode,
+                    "first_stderr": first_err,
+                }
+            finally:
+                release_reservation.write_text("go")
+                release_adapter.write_text("go")
+                for proc in (first, second):
+                    if proc is None:
+                        continue
+                    if proc.poll() is None:
+                        proc.kill()
+                    proc.communicate()
+
+    @unittest.skipUnless(os.name == "posix", "POSIX two-process reservation race")
+    def test_prewrite_reservation_race_passes_on_fixed_branch(self):
+        result = self._prewrite_race_probe(baseline_sha=None)
+        self.assertFalse(result["second_slot"], result)
+        self.assertFalse(result["launched_before_first_write"], result)
+        self.assertEqual(result["adapter_calls"], 1, result)
+        self.assertNotEqual(result["second_rc"], 0, result)
+        self.assertIn("unresolved UNKNOWN_OUTCOME", result["second_stderr"], result)
+        print("PREWRITE_RACE fixed HEAD: PASS (second adapter never ran)")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX two-process reservation race")
+    def test_prewrite_reservation_race_reproduces_failure_on_old_main(self):
+        old_main = "51d8ce16f3b13816165db0aa0adc5352feecf136"
+        result = self._prewrite_race_probe(baseline_sha=old_main)
+        self.assertTrue(result["second_slot"], result)
+        self.assertTrue(result["launched_before_first_write"], result)
+        self.assertEqual(result["adapter_calls"], 2, result)
+        self.assertEqual(result["second_rc"], 0, result)
+        print(f"PREWRITE_RACE old main {old_main[:12]}: RED (second adapter launched before first reservation)")
 
     @unittest.skipUnless(os.name == "posix", "POSIX flock integration")
     def test_concurrent_supervisors_share_reservation_and_second_never_starts(self):
@@ -733,6 +888,32 @@ class RunAdapterTests(unittest.TestCase):
 
 
 class ExecutePilotTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "POSIX directory fsync")
+    def test_new_journal_parent_directories_are_fsynced(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo = Path(temp_dir) / "repo"
+            repo.mkdir()
+            original = execute_pilot._fsync_directory
+            with mock.patch.object(execute_pilot, "_fsync_directory", wraps=original) as spy:
+                output_root = execute_pilot.ensure_output_root(repo.resolve())
+                attempt, attempt_dir = execute_pilot.reserve_attempt(output_root, "f" * 64, 2)
+            self.assertEqual(attempt, 1)
+            self.assertTrue((attempt_dir / "reservation.json").is_file())
+            synced = [args[0] for args, _ in (item for item in spy.call_args_list)]
+            self.assertIn(repo.parent, synced)  # output directory entry
+            self.assertIn(output_root, synced)  # package directory entry
+            self.assertIn(output_root / ("f" * 64), synced)  # attempt and lock entries
+            self.assertIn(attempt_dir, synced)  # atomic reservation rename
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory fsync")
+    def test_fsync_failure_prevents_durable_reservation_completion(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            with mock.patch.object(execute_pilot, "_fsync_directory", side_effect=OSError("simulated fsync failure")):
+                with self.assertRaisesRegex(OSError, "simulated fsync failure"):
+                    execute_pilot.reserve_attempt(root, "a" * 64, 2)
+            self.assertFalse((root / ("a" * 64) / "attempt-001" / "reservation.json").exists())
+
     def test_max_runs_reservation_is_atomic_and_fail_closed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
