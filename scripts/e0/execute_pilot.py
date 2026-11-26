@@ -26,7 +26,7 @@ from preflight_pilot import (
     validate_manifest,
 )
 from run_adapter import AdapterError, AdapterOutputLimitError, AdapterTimeoutError, bounded_run
-from classify_attempts import classify_package, unknown_outcome_attempts
+from classify_attempts import classify_attempt
 
 
 class PilotUnknownOutcome(AdapterError):
@@ -217,16 +217,6 @@ def package_reservation_lock(package_root: Path):
         os.close(fd)
 
 
-def _read_reservation_for_gate(attempt_dir: Path) -> dict[str, Any] | None:
-    """Fail-closed read for the bounded reserve gate, inside package flock."""
-    path = attempt_dir / "reservation.json"
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return None
-    return value if isinstance(value, dict) else None
-
-
 def reserve_attempt(
     output_root: Path,
     package_hash: str,
@@ -248,29 +238,34 @@ def reserve_attempt(
     with package_reservation_lock(package_root):
         # The journal check and the durable blocking reservation form one
         # interprocess critical section. No adapter may start before it ends.
-        unknown = unknown_outcome_attempts(package_root)
-        if unknown:
-            names = ", ".join(Path(e["attempt_dir"]).name for e in unknown)
-            raise PreflightError(
-                f"Pilot refuses a new attempt: unresolved UNKNOWN_OUTCOME in {names}; "
-                "the provider may have processed it, an owner must resolve it out of band")
-        # A matching terminal-seal file proves byte consistency but NOT that
-        # fsync of its directory succeeded. If that fsync raised, the caller
-        # returned 4 even though the seal remains visible. Another process
-        # cannot distinguish that case from a fully synced seal by reading
-        # the journal. For v1, any terminal result consumes the package's
-        # automatic continuation right. Owner must independently resolve it.
-        terminal = [
-            e for e in classify_package(package_root)
-            if e["outcome"] in {"COMPLETED", "FAILED"}
-            and (reservation := _read_reservation_for_gate(Path(e["attempt_dir"])))
-            and reservation.get("journal_protocol") == TERMINAL_SEAL_PROTOCOL
-        ]
-        if terminal:
-            names = ", ".join(Path(e["attempt_dir"]).name for e in terminal)
-            raise PreflightError(
-                f"Pilot refuses a new attempt: terminal result in {names} "
-                "requires separate owner review; visible seal cannot prove fsync success")
+        # One admission pass under flock, with reservation.json as v1 authority.
+        # Never reclassify a v1 result or seal to authorize another slot.
+        for prior_dir in sorted(package_root.glob("attempt-*")):
+            if prior_dir.is_symlink() or not prior_dir.is_dir():
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: invalid journal path {prior_dir.name}")
+            try:
+                reservation = parse_json_object(
+                    read_regular_file_once(prior_dir / "reservation.json",
+                                           label="Pilot reservation"),
+                    label="Pilot reservation",
+                )
+            except (PreflightError, OSError) as exc:
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: reservation.json unreadable "
+                    f"in {prior_dir.name}: {exc}") from exc
+            if reservation.get("journal_protocol") == TERMINAL_SEAL_PROTOCOL:
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: v1 reservation in "
+                    f"{prior_dir.name} requires separate owner review; "
+                    "unresolved UNKNOWN_OUTCOME cannot be excluded")
+            # Historical journals preserve the existing legacy classification.
+            legacy = classify_attempt(prior_dir)
+            if legacy["outcome"] == "UNKNOWN_OUTCOME":
+                raise PreflightError(
+                    f"Pilot refuses a new attempt: unresolved UNKNOWN_OUTCOME "
+                    f"in {prior_dir.name}; the provider may have processed it, "
+                    "an owner must resolve it out of band")
         for attempt in range(1, max_runs + 1):
             attempt_dir = package_root / f"attempt-{attempt:03d}"
             try:
