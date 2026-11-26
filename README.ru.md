@@ -26,6 +26,8 @@ Velantrim Continuum исследует простой вопрос с намер
 **⚙ Machine-readable current state:** [`project-state.json`](project-state.json)  
 **📊 Текущий статус:** [`STATUS.md`](STATUS.md)
 
+**📓 История проекта:** [Журнал проекта](docs/PROJECT_JOURNAL.md)
+
 ---
 
 ## 👋 Что это за проект
